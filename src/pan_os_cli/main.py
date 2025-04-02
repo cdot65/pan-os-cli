@@ -1,4 +1,4 @@
-"""Main CLI entry point for panos-cli."""
+"""Main CLI entry point for pan-os-cli."""
 
 import logging
 import sys
@@ -7,9 +7,9 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from panos_cli import commands
-from panos_cli.config import load_config
-from panos_cli.utils import configure_logging
+from pan_os_cli import commands
+from pan_os_cli.config import load_config
+from pan_os_cli.utils import configure_logging
 
 # Configure console and logger
 console = Console()
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Create main Typer app
 app = typer.Typer(
-    name="panos-cli",
+    name="pan-os-cli",
     help="CLI tool for managing PAN-OS configurations with multi-threading support",
     add_completion=True,
 )

@@ -42,13 +42,16 @@ def load_config(config_path: Optional[str] = None) -> PanosConfig:
     Load configuration from environment variables and configuration file.
 
     Args:
-        config_path: Path to the configuration file (default: ~/.panos-cli/config.yaml)
+        config_path: Path to the configuration file (default: ~/.pan-os-cli/config.yaml)
 
     Returns:
         PanosConfig: Configuration object
     """
     if config_path is None:
-        config_path = os.path.expanduser("~/.panos-cli/config.yaml")
+        # Use os.path.join for cross-platform path compatibility
+        home_dir = os.path.expanduser("~")
+        config_dir = os.path.join(home_dir, ".pan-os-cli")
+        config_path = os.path.join(config_dir, "config.yaml")
 
     # Create config directory if it doesn't exist
     config_dir = os.path.dirname(config_path)

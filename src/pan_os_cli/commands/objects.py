@@ -8,11 +8,13 @@ import typer
 from panos.objects import AddressObject as PanosAddress
 from panos.objects import AddressGroup as PanosAddressGroup
 from rich.console import Console
+from rich.table import Table
+import rich.box
 
-from panos_cli.client import PanosClient
-from panos_cli.config import load_config
-from panos_cli.models.objects import Address, AddressGroup
-from panos_cli.utils import create_progress_tracker, load_yaml, process_futures, validate_data
+from pan_os_cli.client import PanosClient
+from pan_os_cli.config import load_config
+from pan_os_cli.models.objects import Address, AddressGroup
+from pan_os_cli.utils import create_progress_tracker, load_yaml, process_futures, validate_data
 
 # Configure logger and console
 logger = logging.getLogger(__name__)
@@ -669,19 +671,28 @@ def show_addresses(
                 
             # Display addresses in a table format
             console.print(f"\n[bold blue]Address Objects in {device_group}[/]:")
-            console.print("┌───────────────┬─────────────┬────────────────────┬─────────────────────┐")
-            console.print("│ [bold]Name[/]          │ [bold]Type[/]        │ [bold]Value[/]             │ [bold]Description[/]        │")
-            console.print("├───────────────┼─────────────┼────────────────────┼─────────────────────┤")
             
+            # Create a Rich table with rounded corners
+            table = Table(show_header=True, header_style="bold", box=rich.box.ROUNDED)
+            
+            # Add columns
+            table.add_column("Name", style="cyan")
+            table.add_column("Type", style="green")
+            table.add_column("Value", style="yellow")
+            table.add_column("Description")
+            table.add_column("Device Group", style="magenta")
+            
+            # Add rows
             for addr in addresses:
                 name_col = addr.name[:13] + (addr.name[13:] and "...")
                 type_col = addr.type[:11] + (addr.type[11:] and "...")
                 value_col = str(addr.value)[:18] + (str(addr.value)[18:] and "...")
                 desc_col = (addr.description or "")[:19] + ((addr.description or "")[19:] and "...")
                 
-                console.print(f"│ {name_col:<13} │ {type_col:<11} │ {value_col:<18} │ {desc_col:<19} │")
-                
-            console.print("└───────────────┴─────────────┴────────────────────┴─────────────────────┘")
+                table.add_row(name_col, type_col, value_col, desc_col, device_group)
+            
+            # Print the table
+            console.print(table)
             console.print(f"Total: [bold green]{len(addresses)}[/] address objects")
             
     except Exception as e:

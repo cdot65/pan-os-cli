@@ -1,14 +1,14 @@
-# panos-cli
+# pan-os-cli
 
 A CLI tool for efficiently managing PAN-OS configurations with multi-threading support.
 
-[![License](https://img.shields.io/github/license/cdot65/panos-cli)](LICENSE)
+[![License](https://img.shields.io/github/license/cdot65/pan-os-cli)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![Poetry](https://img.shields.io/badge/poetry-dependency%20management-blue)](https://python-poetry.org/)
 
 ## Overview
 
-`panos-cli` provides a command-line interface for managing Palo Alto Networks firewalls and Panorama appliances. It uses concurrent processing to handle bulk operations efficiently, making it ideal for:
+`pan-os-cli` provides a command-line interface for managing Palo Alto Networks firewalls and Panorama appliances. It uses concurrent processing to handle bulk operations efficiently, making it ideal for:
 
 - **Address Object Management**: Create, update, delete, and bulk load address objects
 - **Address Group Management**: Manage static and dynamic address groups
@@ -31,20 +31,20 @@ A CLI tool for efficiently managing PAN-OS configurations with multi-threading s
 ### Using pip
 
 ```bash
-pip install panos-cli
+pip install pan-os-cli
 ```
 
 ### Using Poetry (for development)
 
 ```bash
-git clone https://github.com/cdot65/panos-cli.git
-cd panos-cli
+git clone https://github.com/cdot65/pan-os-cli.git
+cd pan-os-cli
 poetry install
 ```
 
 ## Configuration
 
-`panos-cli` can be configured in multiple ways:
+`pan-os-cli` can be configured in multiple ways:
 
 ### Environment Variables
 
@@ -75,7 +75,7 @@ settings:
 ### Command Pattern
 
 ```bash
-panos-cli <action> <object-type> <object> [options]
+pan-os-cli <action> <object-type> <object> [options]
 ```
 
 ### Examples
@@ -84,60 +84,60 @@ panos-cli <action> <object-type> <object> [options]
 
 ```bash
 # Create an address object
-panos-cli set objects address --name web-server --ip-netmask 192.168.1.100/32
+pan-os-cli set objects address --name web-server --ip-netmask 192.168.1.100/32
 
 # Delete an address object
-panos-cli delete objects address --name web-server
+pan-os-cli delete objects address --name web-server
 
 # Bulk load address objects from YAML
-panos-cli load objects address --file addresses.yaml
+pan-os-cli load objects address --file addresses.yaml
 
 # Get address objects (specific or all)
-panos-cli get objects address --name web-server
-panos-cli get objects address  # Lists all
+pan-os-cli get objects address --name web-server
+pan-os-cli get objects address  # Lists all
 
 # Show detailed address information
-panos-cli show addresses --device-group "Shared"
-panos-cli show addresses --name web-server
+pan-os-cli show addresses --device-group "Shared"
+pan-os-cli show addresses --name web-server
 ```
 
 #### Address Group Management
 
 ```bash
 # Create a static address group
-panos-cli set objects address-group --name internal-servers --static-members web-server,db-server
+pan-os-cli set objects address-group --name internal-servers --static-members web-server,db-server
 
 # Create a dynamic address group
-panos-cli set objects address-group --name dynamic-servers --dynamic-filter "'server' in tags"
+pan-os-cli set objects address-group --name dynamic-servers --dynamic-filter "'server' in tags"
 
 # Delete an address group
-panos-cli delete objects address-group --name internal-servers
+pan-os-cli delete objects address-group --name internal-servers
 
 # Bulk load address groups from YAML
-panos-cli load objects address-group --file address-groups.yaml
+pan-os-cli load objects address-group --file address-groups.yaml
 ```
 
 #### Commit Operations
 
 ```bash
 # Commit changes
-panos-cli commit objects changes
+pan-os-cli commit objects changes
 
 # Commit with description and wait for completion
-panos-cli commit objects changes --description "Update address objects" --wait
+pan-os-cli commit objects changes --description "Update address objects" --wait
 
 # Check commit status
-panos-cli commit objects check-commit --job-id 12345
+pan-os-cli commit objects check-commit --job-id 12345
 ```
 
 #### Testing Connectivity
 
 ```bash
 # Test authentication to PAN-OS device
-panos-cli test auth
+pan-os-cli test auth
 
 # Test in mock mode without making API calls
-panos-cli test auth --mock
+pan-os-cli test auth --mock
 ```
 
 ### YAML Format for Bulk Loading
@@ -204,8 +204,8 @@ address_groups:
 
 ```bash
 # Clone the repository
-git clone https://github.com/cdot65/panos-cli.git
-cd panos-cli
+git clone https://github.com/cdot65/pan-os-cli.git
+cd pan-os-cli
 
 # Install dependencies
 poetry install

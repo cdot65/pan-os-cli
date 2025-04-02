@@ -10,7 +10,7 @@ from panos.errors import PanDeviceError, PanXapiError
 from panos.panorama import DeviceGroup, Panorama
 from rich.console import Console
 
-from panos_cli.config import PanosConfig
+from pan_os_cli.config import PanosConfig
 
 # Type variable for generic functions
 T = TypeVar("T")

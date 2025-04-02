@@ -1,4 +1,4 @@
-"""Utility functions for panos-cli."""
+"""Utility functions for pan-os-cli."""
 
 import logging
 import os
