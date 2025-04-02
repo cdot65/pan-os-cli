@@ -49,9 +49,9 @@ poetry install
 ### Environment Variables
 
 ```bash
-export panos_username="admin"
+export panos_username="EXAMPLE_USERNAME_HERE"
 export panos_password="EXAMPLE_PASSWORD_HERE"
-export panos_host="firewall.example.com"
+export panos_host="EXAMPLE_HOSTNAME_HERE"
 ```
 
 ### Configuration File
@@ -59,13 +59,16 @@ export panos_host="firewall.example.com"
 Create a YAML file at `~/.panos-cli/config.yaml`:
 
 ```yaml
-credentials:
-  username: "admin"
-  password: "EXAMPLE_PASSWORD_HERE"
-  hostname: "firewall.example.com"
-  api_key: "EXAMPLE_API_KEY_HERE" # Optional: Use instead of username/password
+# PAN-OS CLI Configuration
 
-settings:
+default:
+  # Authentication settings
+  username: "EXAMPLE_USERNAME_HERE"
+  password: "EXAMPLE_PASSWORD_HERE"
+  hostname: "EXAMPLE_HOSTNAME_HERE"
+  # api_key: "EXAMPLE_API_KEY_HERE" # Optional: Use instead of username/password
+
+  # Application settings
   thread_pool_size: 10
   mock_mode: false
 ```
