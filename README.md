@@ -50,8 +50,8 @@ poetry install
 
 ```bash
 export panos_username="admin"
-export panos_password="your-password"
-export panos_host="panorama.example.com"
+export panos_password="EXAMPLE_PASSWORD_HERE"
+export panos_host="firewall.example.com"
 ```
 
 ### Configuration File
@@ -61,9 +61,9 @@ Create a YAML file at `~/.panos-cli/config.yaml`:
 ```yaml
 credentials:
   username: "admin"
-  password: "your-password"
-  hostname: "panorama.example.com"
-  api_key: "your-api-key"  # Optional: Use instead of username/password
+  password: "EXAMPLE_PASSWORD_HERE"
+  hostname: "firewall.example.com"
+  api_key: "EXAMPLE_API_KEY_HERE" # Optional: Use instead of username/password
 
 settings:
   thread_pool_size: 10
@@ -145,7 +145,6 @@ pan-os-cli test auth --mock
 #### Address Objects (addresses.yaml)
 
 ```yaml
-
 addresses:
   - name: web-server-1
     ip_netmask: 192.168.1.10/32
@@ -153,27 +152,25 @@ addresses:
     tags:
       - web
       - production
-  
+
   - name: app-server-1
     ip_netmask: 192.168.1.20/32
     description: Application server
     tags:
       - app
       - production
-      
+
   - name: db-server-1
     ip_netmask: 192.168.1.30/32
     description: Database server
     tags:
       - db
       - production
-
 ```
 
 #### Address Groups (address-groups.yaml)
 
 ```yaml
-
 address_groups:
   - name: web-servers
     static_members:
@@ -183,14 +180,13 @@ address_groups:
     tags:
       - web
       - servers
-  
+
   - name: dynamic-web-servers
     dynamic_filter: "'web' in tags"
     description: Dynamic group for web servers
     tags:
       - web
       - dynamic
-
 ```
 
 ## Development

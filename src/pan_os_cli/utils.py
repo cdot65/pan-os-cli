@@ -2,10 +2,10 @@
 
 import logging
 import os
-import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar
 
+import yaml
 from pydantic import ValidationError
 from rich.console import Console
 from rich.logging import RichHandler
@@ -59,7 +59,7 @@ def load_yaml(file_path: str) -> Dict[str, Any]:
         with open(path, "r") as f:
             return yaml.safe_load(f) or {}
     except yaml.YAMLError as e:
-        raise yaml.YAMLError(f"Error parsing YAML file {path}: {str(e)}")
+        raise yaml.YAMLError(f"Error parsing YAML file {path}: {str(e)}") from e
 
 
 def save_yaml(file_path: str, data: Dict[str, Any]) -> None:
@@ -82,7 +82,7 @@ def save_yaml(file_path: str, data: Dict[str, Any]) -> None:
         with open(path, "w") as f:
             yaml.dump(data, f, default_flow_style=False)
     except (IOError, yaml.YAMLError) as e:
-        raise IOError(f"Error writing YAML file {path}: {str(e)}")
+        raise IOError(f"Error writing YAML file {path}: {str(e)}") from e
 
 
 def validate_data(data: Dict[str, Any], model_class: Type[T]) -> List[T]:
@@ -108,7 +108,7 @@ def validate_data(data: Dict[str, Any], model_class: Type[T]) -> List[T]:
             # Add item index to error message
             error_msg = f"Validation error in item {idx + 1}: {str(e)}"
             console.print(f"[bold red]Error:[/] {error_msg}")
-            raise ValidationError(e.raw_errors, model_class)
+            raise ValidationError(e.raw_errors, model_class) from e
 
     return validated_objects
 

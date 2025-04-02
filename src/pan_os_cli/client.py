@@ -68,7 +68,7 @@ class PanosClient:
         except (PanDeviceError, PanXapiError) as e:
             error_msg = f"Failed to connect to {self.config.hostname}: {str(e)}"
             logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
     def _get_device_group(self, device_group: str) -> Optional[DeviceGroup]:
         """
@@ -125,7 +125,8 @@ class PanosClient:
                 # Exponential backoff
                 wait_time = 2**retry_count
                 logger.warning(
-                    f"API call failed ({retry_count}/{max_retries}), retrying in {wait_time}s: {str(e)}"
+                    f"API call failed ({retry_count}/{max_retries}), retrying in {wait_time}s: "
+                    f"{str(e)}"
                 )
                 time.sleep(wait_time)
 
@@ -220,7 +221,8 @@ class PanosClient:
         if self.config.mock_mode:
             logger.info(f"MOCK: Would delete {len(objects_to_delete)} objects from {device_group}")
             console.print(
-                f"[bold green]MOCK:[/] Deleting {len(objects_to_delete)} objects from {device_group}"
+                f"[bold green]MOCK:[/] Deleting {len(objects_to_delete)} objects from "
+                f"{device_group}"
             )
             return []
 

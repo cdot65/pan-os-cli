@@ -25,7 +25,9 @@ app = typer.Typer(
 # Register command groups
 app.add_typer(commands.objects.app, name="objects", help="Manage address objects and groups")
 app.add_typer(commands.objects.test_app, name="test", help="Test various PAN-OS operations")
-app.add_typer(commands.objects.show_app, name="show", help="Perform read operations on PAN-OS configuration")
+app.add_typer(
+    commands.objects.show_app, name="show", help="Perform read operations on PAN-OS configuration"
+)
 
 
 @app.callback()

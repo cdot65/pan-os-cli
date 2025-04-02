@@ -256,8 +256,8 @@ panos-cli/
 
 ```yaml
 username: "admin"
-password: "secret"
-hostname: "panorama.example.com"
+password: "EXAMPLE_PASSWORD_HERE"
+hostname: "firewall.example.com"
 thread_pool_size: 10
 ```
 

@@ -1,8 +1,9 @@
 """Data models for PAN-OS address objects and address groups."""
 
-from typing import List, Optional
-from pydantic import BaseModel, Field, validator
 import ipaddress
+from typing import List, Optional
+
+from pydantic import BaseModel, Field, validator
 
 
 class Address(BaseModel):
@@ -25,33 +26,42 @@ class Address(BaseModel):
         extra = "forbid"
 
     @validator("ip_netmask", pre=True)
-    def validate_ip_netmask(cls, v):
+    def validate_ip_netmask(self, v):
         """Validate IP netmask format."""
         if v is None:
             return v
         try:
             ipaddress.ip_network(v)
             return v
-        except ValueError:
-            raise ValueError(f"Invalid IP address or network: {v}. Please use CIDR notation (e.g., 192.168.1.0/24).")
+        except ValueError as err:
+            raise ValueError(
+                f"Invalid IP address or network: {v}. "
+                f"Please use CIDR notation (e.g., 192.168.1.0/24)."
+            ) from err
         except Exception as e:
-            raise ValueError(f"Invalid IP address format: {v}. Please provide a valid IP address or network. Error: {str(e)}")
+            raise ValueError(
+                f"Invalid IP address format: {v}. "
+                f"Please provide a valid IP address or network. "
+                f"Error: {str(e)}"
+            ) from e
 
     @validator("ip_range", pre=True)
-    def validate_ip_range(cls, v):
+    def validate_ip_range(self, v):
         """Validate IP range format."""
         if v is None:
             return v
         try:
-            start, end = v.split("-")
-            ipaddress.ip_address(start.strip())
-            ipaddress.ip_address(end.strip())
+            start_ip, end_ip = v.split("-")
+            ipaddress.ip_address(start_ip.strip())
+            ipaddress.ip_address(end_ip.strip())
             return v
-        except (ValueError, AttributeError):
-            raise ValueError(f"Invalid IP range: {v}. Must be in format: 192.168.1.1-192.168.1.10")
+        except (ValueError, AttributeError) as err:
+            raise ValueError(
+                f"Invalid IP range: {v}. Must be in format: 192.168.1.1-192.168.1.10"
+            ) from err
 
     @validator("name", pre=True)
-    def validate_name(cls, v):
+    def validate_name(self, v):
         """Validate address object name."""
         if not v or not isinstance(v, str):
             raise ValueError("Name must be a non-empty string")
@@ -104,7 +114,7 @@ class AddressGroup(BaseModel):
         extra = "forbid"
 
     @validator("name", pre=True)
-    def validate_name(cls, v):
+    def validate_name(self, v):
         """Validate address group name."""
         if not v or not isinstance(v, str):
             raise ValueError("Name must be a non-empty string")
@@ -113,7 +123,7 @@ class AddressGroup(BaseModel):
         return v
 
     @validator("static_members", "dynamic_filter")
-    def validate_group_type(cls, v, values, **kwargs):
+    def validate_group_type(self, v, values, **kwargs):
         """Ensure either static_members or dynamic_filter is provided, but not both."""
         field = kwargs["field"].name
         other_field = "dynamic_filter" if field == "static_members" else "static_members"

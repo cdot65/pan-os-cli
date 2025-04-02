@@ -26,6 +26,7 @@ mkdocs = "^1.5.3"
 mkdocs-material = "^9.4.7"
 flake8 = "^7.2.0"
 yamllint = "^1.37.0"
+checkov = "^3.2.396"
 
 [tool.poetry.scripts]
 pan-os-cli = "pan_os_cli.main:app"
@@ -42,6 +43,18 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "N", "W", "C"]
+ignore = ["E203"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["pan_os_cli"]
 
 [build-system]
 requires = ["poetry-core"]

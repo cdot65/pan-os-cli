@@ -100,7 +100,7 @@ def generate_api_key(config: PanosConfig) -> str:
         )
         api_key = device.generate_api_key()
         return api_key
-    except ImportError:
-        raise ImportError("pan-os-python is required to generate API key")
+    except ImportError as err:
+        raise ImportError("pan-os-python is required to generate API key") from err
     except Exception as e:
-        raise ValueError(f"Failed to generate API key: {str(e)}")
+        raise ValueError(f"Failed to generate API key: {str(e)}") from e
