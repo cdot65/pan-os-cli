@@ -567,12 +567,6 @@ def test_auth(
         # Create PAN-OS client
         client = PanosClient(config)
 
-        # In mock mode, we don't actually test connectivity
-        if mock:
-            console.print("[bold green]MOCK:[/] Authentication would be tested")
-            console.print("[bold green]MOCK:[/] Connection to PAN-OS device successful")
-            return
-
         # Test connectivity using system info refresh
         console.print(f"Testing connection to [bold blue]{config.hostname}[/]...")
         client.device.refresh_system_info()
@@ -580,10 +574,20 @@ def test_auth(
         # Display connection information
         console.print("[bold green]Connection successful![/]")
         console.print(f"Connected to: [bold blue]{config.hostname}[/]")
-        console.print(f"Model: [bold]{client.device.model}[/]")
-        console.print(f"Serial: [bold]{client.device.serial}[/]")
-        console.print(f"SW Version: [bold]{client.device.version}[/]")
         
+        # Get device info based on device type
+        from panos.panorama import Panorama
+        if isinstance(client.device, Panorama):
+            console.print(f"Device Type: [bold]Panorama[/]")
+            console.print(f"Hostname: [bold]{client.device.hostname}[/]")
+            console.print(f"Serial: [bold]{client.device.serial}[/]")
+            console.print(f"SW Version: [bold]{client.device.version}[/]")
+        else:
+            console.print(f"Device Type: [bold]Firewall[/]")
+            console.print(f"Model: [bold]{client.device.model}[/]")
+            console.print(f"Serial: [bold]{client.device.serial}[/]")
+            console.print(f"SW Version: [bold]{client.device.version}[/]")
+    
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
         logger.exception("Error testing authentication")
