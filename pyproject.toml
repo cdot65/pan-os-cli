@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "panos-cli"
+version = "0.1.0"
+description = "CLI tool for managing PAN-OS configurations with multi-threading support"
+authors = ["Calvin Remsburg <cremsburg@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "panos_cli", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+typer = {extras = ["all"], version = "^0.15.2"}
+pyyaml = "^6.0.1"
+pan-os-python = "^1.12.1"
+dynaconf = "^3.2.10"
+rich = "^13.6.0"
+concurrent-log-handler = "^0.9.24"
+setuptools = "^78.1.0"
+pydantic = "^2.11.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+ruff = "^0.1.6"
+pre-commit = "^3.5.0"
+mkdocs = "^1.5.3"
+mkdocs-material = "^9.4.7"
+flake8 = "^7.2.0"
+yamllint = "^1.37.0"
+
+[tool.poetry.scripts]
+panos-cli = "panos_cli.main:app"
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+markers = [
+    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
