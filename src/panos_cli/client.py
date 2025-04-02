@@ -265,7 +265,7 @@ class PanosClient:
         parent.add(dummy_obj)
 
         try:
-            dummy_obj.refreshall()
+            dummy_obj.refreshall(parent)
             return parent.findall(obj_class)
         except (PanDeviceError, PanXapiError) as e:
             logger.error(f"Failed to get objects: {str(e)}")

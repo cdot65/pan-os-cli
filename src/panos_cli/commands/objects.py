@@ -8,6 +8,8 @@ import typer
 from panos.objects import AddressObject as PanosAddress
 from panos.objects import AddressGroup as PanosAddressGroup
 from rich.console import Console
+from rich.table import Table
+import rich.box
 
 from panos_cli.client import PanosClient
 from panos_cli.config import load_config
@@ -578,9 +580,43 @@ def test_auth(
         # Display connection information
         console.print("[bold green]Connection successful![/]")
         console.print(f"Connected to: [bold blue]{config.hostname}[/]")
-        console.print(f"Model: [bold]{client.device.model}[/]")
-        console.print(f"Serial: [bold]{client.device.serial}[/]")
-        console.print(f"SW Version: [bold]{client.device.version}[/]")
+        
+        # Check if it's a Panorama device or a firewall
+        from panos.panorama import Panorama
+        
+        if isinstance(client.device, Panorama):
+            console.print(f"Device Type: [bold]Panorama[/]")
+            console.print(f"Hostname: [bold]{client.device.hostname}[/]")
+            
+            # For Panorama, we might need different attributes or methods
+            try:
+                console.print(f"Serial: [bold]{client.device.serial}[/]")
+            except AttributeError:
+                console.print("Serial: [italic]Not available[/]")
+                
+            try:
+                console.print(f"SW Version: [bold]{client.device.version}[/]")
+            except AttributeError:
+                try:
+                    console.print(f"SW Version: [bold]{client.device.sw_version}[/]")
+                except AttributeError:
+                    console.print("SW Version: [italic]Not available[/]")
+        else:
+            # For firewalls, we can use the standard attributes
+            try:
+                console.print(f"Model: [bold]{client.device.model}[/]")
+            except AttributeError:
+                console.print("Model: [italic]Not available[/]")
+                
+            try:
+                console.print(f"Serial: [bold]{client.device.serial}[/]")
+            except AttributeError:
+                console.print("Serial: [italic]Not available[/]")
+                
+            try:
+                console.print(f"SW Version: [bold]{client.device.version}[/]")
+            except AttributeError:
+                console.print("SW Version: [italic]Not available[/]")
         
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
@@ -667,21 +703,39 @@ def show_addresses(
                 console.print(f"[bold yellow]Warning:[/] No address objects found in {device_group}")
                 return
                 
-            # Display addresses in a table format
-            console.print(f"\n[bold blue]Address Objects in {device_group}[/]:")
-            console.print("┌───────────────┬─────────────┬────────────────────┬─────────────────────┐")
-            console.print("│ [bold]Name[/]          │ [bold]Type[/]        │ [bold]Value[/]             │ [bold]Description[/]        │")
-            console.print("├───────────────┼─────────────┼────────────────────┼─────────────────────┤")
+            # Use Rich's Table class for better formatting
+            table = Table(
+                title=f"[bold blue]Address Objects in {device_group}[/]",
+                show_header=True, 
+                header_style="bold", 
+                box=rich.box.ROUNDED
+            )
+            
+            # Add columns to the table
+            table.add_column("Name", style="cyan")
+            table.add_column("Type", style="green")
+            table.add_column("Value", style="yellow") 
+            table.add_column("Description")
+            table.add_column("Device Group", style="magenta")
             
             for addr in addresses:
-                name_col = addr.name[:13] + (addr.name[13:] and "...")
-                type_col = addr.type[:11] + (addr.type[11:] and "...")
-                value_col = str(addr.value)[:18] + (str(addr.value)[18:] and "...")
-                desc_col = (addr.description or "")[:19] + ((addr.description or "")[19:] and "...")
+                # Add rows to the table with appropriate truncation if needed
+                name = addr.name
+                addr_type = addr.type
+                value = str(addr.value)
+                description = addr.description or ""
                 
-                console.print(f"│ {name_col:<13} │ {type_col:<11} │ {value_col:<18} │ {desc_col:<19} │")
-                
-            console.print("└───────────────┴─────────────┴────────────────────┴─────────────────────┘")
+                # Add the row with the device group column
+                table.add_row(
+                    name,
+                    addr_type,
+                    value,
+                    description,
+                    device_group
+                )
+            
+            # Print the table
+            console.print(table)
             console.print(f"Total: [bold green]{len(addresses)}[/] address objects")
             
     except Exception as e:
