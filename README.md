@@ -14,6 +14,7 @@ A CLI tool for efficiently managing PAN-OS configurations with multi-threading s
 - **Address Group Management**: Manage static and dynamic address groups
 - **Multi-Threading**: Process API requests in parallel for improved performance
 - **Commit Operations**: Commit configuration changes with status tracking
+- **Thread Monitoring**: Visualize and track thread utilization during operations
 
 > **Note**: This tool focuses specifically on address object management and uses multi-threading to optimize performance when dealing with large numbers of objects.
 
@@ -22,6 +23,7 @@ A CLI tool for efficiently managing PAN-OS configurations with multi-threading s
 - **Efficient Multi-Threading**: Configurable thread pool for parallel API operations
 - **Bulk Operations**: Load hundreds of objects from YAML files with a single command
 - **Comprehensive Error Handling**: Built-in retry mechanism with exponential backoff
+- **Thread Monitoring**: Real-time visualization of thread utilization and task completion progress
 - **Intelligent Naming Convention**: Address objects created with the test command use a readable format of `<adjective>-<noun>-<timestamp>`
 - **Configurable**: Works with environment variables or configuration file
 - **Mock Mode**: Test commands without making actual API calls
@@ -50,10 +52,13 @@ poetry install
 ### Environment Variables
 
 ```bash
-export panos_username="EXAMPLE_USERNAME_HERE"
-export panos_password="EXAMPLE_PASSWORD_HERE"
-export panos_host="EXAMPLE_HOSTNAME_HERE"
+# Recommended: Use uppercase PANOS_ prefix (these are preferred)
+export PANOS_USERNAME="EXAMPLE_USERNAME_HERE"
+export PANOS_PASSWORD="EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
+export PANOS_HOSTNAME="EXAMPLE_HOSTNAME_HERE"
 ```
+
+> **Important**: The uppercase `PANOS_` prefix variables are preferred and more reliable. The lowercase variables may not work in all cases.
 
 ### Configuration File
 
@@ -65,7 +70,7 @@ Create a YAML file at `~/.panos-cli/config.yaml`:
 default:
   # Authentication settings
   username: "EXAMPLE_USERNAME_HERE"
-  password: "EXAMPLE_PASSWORD_HERE"
+  password: "EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
   hostname: "EXAMPLE_HOSTNAME_HERE"
   # api_key: "EXAMPLE_API_KEY_HERE" # Optional: Use instead of username/password
 
@@ -106,7 +111,45 @@ pan-os-cli show addresses --name web-server
 
 # Test creating multiple address objects
 pan-os-cli test objects addresses --count 500 --device-group LAB_DG
+
+# Test with thread monitoring (automatically enabled when threads > 5)
+pan-os-cli test objects addresses --count 100 --threads 10
 ```
+
+#### Thread Monitoring
+
+The CLI provides built-in thread monitoring to help you visualize and optimize multi-threading performance:
+
+```bash
+# Thread monitoring is automatically enabled when using more than 5 threads
+pan-os-cli test objects addresses --count 50 --threads 10
+
+# Sample output:
+# ╭────────────────────────────────────────────────────────────────────────────────────────────────╮
+# │            Thread Utilization (7/10 active)                                                    │
+# │ ┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                        │
+# │ ┃ Thread ID ┃ Object Name                  ┃ Status                    ┃                        │
+# │ ┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩                        │
+# │ │   5489732 │ brave-cloud-1649787522223    │ Active                    │                        │
+# │ │   5489735 │ green-airport-1649787522226  │ Active                    │                        │
+# │ │   5489738 │ young-flower-1649787522231   │ Active                    │                        │
+# │ │   5489740 │ smooth-sun-1649787522237     │ Active                    │                        │
+# │ │   5489742 │ blue-guitar-1649787522242    │ Active                    │                        │
+# │ │   5489745 │ wild-book-1649787522246      │ Active                    │                        │
+# │ │   5489748 │ fast-hat-1649787522249       │ Active                    │                        │
+# │ │   SUMMARY │                              │ Max Concurrent: 10 (100%) │                        │
+# │ │           │                              │ Current: 7/10 (70%)       │                        │
+# │ │           │                              │ Completed: 43/50          │                        │
+# │ └───────────┴──────────────────────────────┴───────────────────────────┘                        │
+# ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+The thread monitoring display shows:
+- **Active Threads**: Currently running threads with their IDs and the object being processed
+- **Thread Utilization**: Current and maximum thread usage as a percentage of the total thread pool
+- **Task Progress**: Number of completed tasks out of the total
+
+This feature helps you optimize the thread count for your specific environment and verify that all threads are being utilized effectively.
 
 #### Address Group Management
 

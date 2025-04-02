@@ -12,15 +12,15 @@ class PanosConfig(BaseModel):
     """Configuration model for PAN-OS connections and client behavior."""
 
     username: str = Field(
-        default_factory=lambda: os.environ.get("panos_username", ""),
+        default_factory=lambda: os.environ.get("PANOS_USERNAME", ""),
         description="Username for PAN-OS authentication",
     )
     password: str = Field(
-        default_factory=lambda: os.environ.get("panos_password", ""),
+        default_factory=lambda: os.environ.get("PANOS_PASSWORD", ""),
         description="Password for PAN-OS authentication",
     )
     hostname: str = Field(
-        default_factory=lambda: os.environ.get("panos_host", ""),
+        default_factory=lambda: os.environ.get("PANOS_HOST", ""),
         description="Hostname/IP of the PAN-OS device",
     )
     api_key: Optional[str] = Field(

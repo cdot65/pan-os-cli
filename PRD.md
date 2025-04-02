@@ -53,7 +53,7 @@
 #### 2.1.3 Authentication
 
 - **Methods**:
-  - Environment variables: `panos_username`, `panos_password`, `panos_host`.
+  - Environment variables: `PANOS_USERNAME`, `PANOS_USERNAME`, `PANOS_HOST`.
   - Config file: `~/.pan-os-cli/config.yaml`.
 - **Config Structure**:
 
