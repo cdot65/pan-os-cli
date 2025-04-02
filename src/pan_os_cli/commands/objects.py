@@ -1,6 +1,7 @@
 """Commands for managing PAN-OS address objects and groups."""
 
 import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -9,6 +10,14 @@ from typing import List, Optional
 import typer
 from panos.errors import PanDeviceError, PanXapiError
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
 from pan_os_cli.client import PanosClient
@@ -23,6 +32,9 @@ from pan_os_cli.utils import (
 # Console setup
 console = Console()
 logger = logging.getLogger(__name__)
+
+# Create Typer app for this command module
+app = typer.Typer()
 
 # Define Typer option defaults as module-level singletons
 EMPTY_LIST = []
@@ -225,7 +237,7 @@ def load_address(
 
         # Load and validate address objects from YAML
         yaml_data = load_yaml_file(file)
-        panos_objects = validate_objects_from_yaml(yaml_data, Address)
+        panos_objects = validate_objects_from_yaml(yaml_data, "addresses", Address)
 
         if not panos_objects:
             console.print("[yellow]Warning:[/] No valid address objects found in the file")
@@ -269,7 +281,7 @@ def load_address(
         # Commit changes if requested
         if commit and successful > 0:
             console.print("Committing changes...")
-            commit_result = client.commit("Address objects bulk load")
+            commit_result = client.commit(admins="Test address objects bulk load")
             console.print(f"Commit job ID: {commit_result}")
 
     except Exception as e:
@@ -705,6 +717,227 @@ def test_auth(
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
         logger.exception("Error testing authentication")
+        raise typer.Exit(1) from e
+
+
+@app.command("addresses")
+def test_addresses(
+    count: int = typer.Option(100, help="Number of address objects to create"),
+    devicegroup: str = typer.Option(
+        SHARED_DEFAULT, "--device-group", "-dg", help="Device group to add addresses to"
+    ),
+    mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
+    threads: int = typer.Option(
+        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
+    ),
+    commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
+):
+    """
+    Test creating multiple address objects using multithreading.
+
+    This command generates a specified number of address objects with unique names based on
+    random words and timestamps, and creates them in PAN-OS using multithreading.
+    """
+    try:
+        # Create client
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
+
+        console.print(f"Generating {count} address objects with random words and timestamps...")
+
+        # Generate test address objects
+        address_objects = []
+        start_time = time.time()
+
+        # Define address types to rotate through
+        addr_types = ["ip-netmask", "fqdn", "ip-range"]
+
+        # Lists for random name generation
+        adjectives = [
+            "red",
+            "blue",
+            "green",
+            "yellow",
+            "purple",
+            "orange",
+            "black",
+            "white",
+            "big",
+            "small",
+            "fast",
+            "slow",
+            "loud",
+            "quiet",
+            "happy",
+            "sad",
+            "brave",
+            "shy",
+            "wild",
+            "calm",
+            "fancy",
+            "plain",
+            "soft",
+            "hard",
+            "hot",
+            "cold",
+            "young",
+            "old",
+            "fresh",
+            "stale",
+            "clean",
+            "dirty",
+            "smooth",
+            "rough",
+        ]
+
+        nouns = [
+            "apple",
+            "banana",
+            "car",
+            "dog",
+            "elephant",
+            "fish",
+            "guitar",
+            "house",
+            "igloo",
+            "jacket",
+            "kite",
+            "lamp",
+            "mountain",
+            "notebook",
+            "ocean",
+            "pencil",
+            "rabbit",
+            "sun",
+            "table",
+            "umbrella",
+            "vase",
+            "window",
+            "xylophone",
+            "zebra",
+            "airport",
+            "book",
+            "cloud",
+            "door",
+            "egg",
+            "flower",
+            "garden",
+            "hat",
+        ]
+
+        for i in range(count):
+            # Get timestamp with milliseconds
+            timestamp = int(time.time() * 1000)
+
+            # Choose random adjective and noun
+            adj = random.choice(adjectives)
+            noun = random.choice(nouns)
+
+            # Choose address type based on index
+            addr_type = addr_types[i % len(addr_types)]
+
+            # Create address object based on type
+            if addr_type == "ip-netmask":
+                # Generate IP in 10.0.0.0/8 range
+                third_octet = (i // 255) % 255
+                fourth_octet = i % 255
+                ip = f"10.0.{third_octet}.{fourth_octet}/32"
+
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}", ip_netmask=ip, description=None, tags=[]
+                )
+            elif addr_type == "fqdn":
+                # Generate unique domain name
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}",
+                    fqdn=f"{adj}-{noun}-{timestamp}.example.com",
+                    description=None,
+                    tags=[],
+                )
+            else:  # ip-range
+                # Generate IP range
+                third_octet = (i // 255) % 255
+                start_ip = f"192.168.{third_octet}.1"
+                end_ip = f"192.168.{third_octet}.10"
+
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}",
+                    ip_range=f"{start_ip}-{end_ip}",
+                    description=None,
+                    tags=[],
+                )
+
+            address_objects.append(address)
+
+        generation_time = time.time() - start_time
+        console.print(f"Generated {count} address objects in {generation_time:.2f} seconds")
+
+        # Create address objects using multithreading
+        console.print(f"Creating {count} address objects with {threads} threads...")
+
+        # Create progress bar
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("Creating address objects"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            # Set up progress tracking
+            task = progress.add_task("Creating", total=len(address_objects))
+
+            # Use thread pool to create addresses concurrently
+            successful = 0
+            failed = 0
+
+            # Temporarily increase logging level to suppress excessive messages
+            original_log_level = logger.level
+            logger.setLevel(logging.WARNING)
+
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                # Submit all tasks
+                future_to_obj = {
+                    executor.submit(client.create_address_object, obj, devicegroup): obj
+                    for obj in address_objects
+                }
+
+                for future in as_completed(future_to_obj):
+                    try:
+                        result = future.result()
+                        if result:
+                            successful += 1
+                        else:
+                            failed += 1
+                    except Exception as e:
+                        logger.error(f"Error creating address: {str(e)}")
+                        failed += 1
+
+                    # Update progress
+                    progress.update(task, advance=1)
+
+            # Restore original logging level
+            logger.setLevel(original_log_level)
+
+        # Display results
+        total_time = time.time() - start_time
+        console.print("Address creation results:")
+        console.print(f"Total objects: {count}")
+        console.print(f"Successfully created: {successful}")
+        console.print(f"Failed: {failed}")
+        console.print(f"Total time: {total_time:.2f} seconds")
+        console.print(f"Objects per second: {count / total_time:.2f}")
+
+        # Commit changes if requested
+        if commit and successful > 0:
+            console.print("Committing changes...")
+            commit_result = client.commit(admins="Test address objects bulk load")
+            console.print(f"Commit job ID: {commit_result}")
+
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] {str(e)}")
+        logger.exception("Error in test_addresses")
         raise typer.Exit(1) from e
 
 

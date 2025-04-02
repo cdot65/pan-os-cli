@@ -36,6 +36,7 @@ set_objects_app = typer.Typer(
 )
 delete_objects_app = typer.Typer(help="Delete PAN-OS objects like addresses and address groups")
 load_objects_app = typer.Typer(help="Bulk load PAN-OS objects like addresses and address groups")
+test_objects_app = typer.Typer(help="Test PAN-OS objects operations with load testing")
 
 # Register action apps to main app
 app.add_typer(show_app, name="show")
@@ -49,6 +50,7 @@ show_app.add_typer(show_objects_app, name="objects")
 set_app.add_typer(set_objects_app, name="objects")
 delete_app.add_typer(delete_objects_app, name="objects")
 load_app.add_typer(load_objects_app, name="objects")
+test_app.add_typer(test_objects_app, name="objects")
 
 
 # Test auth command
@@ -59,6 +61,23 @@ def test_auth_wrapper(
 ):
     """Test PAN-OS authentication and connectivity."""
     commands.objects.test_auth(mock=mock, threads=threads)
+
+
+# Test addresses command
+@test_objects_app.command("addresses")
+def test_addresses_wrapper(
+    count: int = typer.Option(100, help="Number of address objects to create"),
+    devicegroup: str = typer.Option(
+        "Shared", "--device-group", "-dg", help="Device group to add addresses to"
+    ),
+    mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
+    threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
+    commit: bool = typer.Option(False, help="Commit changes after loading"),
+):
+    """Test creating multiple address objects using multithreading."""
+    commands.objects.test_addresses(
+        count=count, devicegroup=devicegroup, mock=mock, threads=threads, commit=commit
+    )
 
 
 # Show addresses command
@@ -190,6 +209,52 @@ def load_addresses_wrapper(
     """Bulk load address objects from YAML file."""
     commands.objects.load_address(
         file=file, devicegroup=device_group, mock=mock, threads=threads, commit=commit
+    )
+
+
+# Set address groups command
+@set_objects_app.command("address-groups")
+def set_address_groups_wrapper(
+    name: str = typer.Option(..., help="Name of the address group"),
+    static_members: str = typer.Option(None, help="Comma-separated list of static members"),
+    dynamic_filter: str = typer.Option(None, help="Filter expression for dynamic group"),
+    description: Optional[str] = typer.Option(None, help="Description of the address group"),
+    tags: str = typer.Option(None, help="Comma-separated list of tags to apply"),
+    device_group: str = typer.Option(
+        "Shared", "--device-group", "-dg", help="Device group to add the address group to"
+    ),
+    mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
+    threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
+):
+    """Create or update an address group."""
+    # Process tags if provided
+    tag_list = []
+    if tags:
+        tag_list = [tag.strip() for tag in tags.split(",")]
+
+    # Process static members if provided
+    static_member_list = []
+    if static_members:
+        static_member_list = [member.strip() for member in static_members.split(",")]
+
+    if static_members and dynamic_filter:
+        console.print("[bold red]Error:[/] Cannot specify both static_members and dynamic_filter")
+        raise typer.Exit(1)
+
+    if not static_members and not dynamic_filter:
+        console.print("[bold red]Error:[/] Must specify either static_members or dynamic_filter")
+        raise typer.Exit(1)
+
+    # Call the command in objects.py
+    commands.objects.set_address_group(
+        name=name,
+        description=description,
+        static_members=static_member_list,
+        dynamic_filter=dynamic_filter,
+        tags=tag_list,
+        devicegroup=device_group,
+        mock=mock,
+        threads=threads,
     )
 
 

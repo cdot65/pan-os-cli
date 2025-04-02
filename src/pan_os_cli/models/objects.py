@@ -97,6 +97,36 @@ class Address(BaseModel):
             tag=self.tags,
         )
 
+    def ensure_tags_exist(self, parent):
+        """
+        Create any tags that don't exist in PAN-OS before using them.
+
+        Args:
+            parent: The parent object to add the tags to (device group or firewall)
+        """
+        if not self.tags:
+            return
+
+        # Get existing tags
+        from panos.objects import Tag
+        from panos.panorama import DeviceGroup, Panorama
+
+        # Need to refresh the tags directly from the device group
+        if isinstance(parent, DeviceGroup) or isinstance(parent, Panorama):
+            Tag.refreshall(parent)
+
+        # Get the existing tags after refreshing
+        existing_tags = [child.name for child in parent.children if isinstance(child, Tag)]
+
+        # Create any tags that don't exist
+        for tag_name in self.tags:
+            if tag_name not in existing_tags:
+                tag_obj = Tag(name=tag_name, color="color1")
+                parent.add(tag_obj)
+                tag_obj.create()
+                # Update existing_tags to include the one we just created
+                existing_tags.append(tag_name)
+
 
 class AddressGroup(BaseModel):
     """Model for PAN-OS Address Group objects."""
@@ -167,3 +197,33 @@ class AddressGroup(BaseModel):
             )
         else:
             raise ValueError("Either static_members or dynamic_filter must be provided")
+
+    def ensure_tags_exist(self, parent):
+        """
+        Create any tags that don't exist in PAN-OS before using them.
+
+        Args:
+            parent: The parent object to add the tags to (device group or firewall)
+        """
+        if not self.tags:
+            return
+
+        # Get existing tags
+        from panos.objects import Tag
+        from panos.panorama import DeviceGroup, Panorama
+
+        # Need to refresh the tags directly from the device group
+        if isinstance(parent, DeviceGroup) or isinstance(parent, Panorama):
+            Tag.refreshall(parent)
+
+        # Get the existing tags after refreshing
+        existing_tags = [child.name for child in parent.children if isinstance(child, Tag)]
+
+        # Create any tags that don't exist
+        for tag_name in self.tags:
+            if tag_name not in existing_tags:
+                tag_obj = Tag(name=tag_name, color="color1")
+                parent.add(tag_obj)
+                tag_obj.create()
+                # Update existing_tags to include the one we just created
+                existing_tags.append(tag_name)
