@@ -22,13 +22,13 @@ console = Console()
 
 # Create Typer app for address objects
 app = typer.Typer(help="Manage address objects and groups")
-set_app = typer.Typer(help="Create or update PAN-OS objects")
-delete_app = typer.Typer(help="Delete PAN-OS objects")
+set_app = typer.Typer(help="Create and update operations for PAN-OS configuration")
+delete_app = typer.Typer(help="Delete operations for PAN-OS configuration")
 load_app = typer.Typer(help="Bulk load PAN-OS objects from YAML files")
-get_app = typer.Typer(help="Get PAN-OS objects")
+get_app = typer.Typer(help="Get operations for PAN-OS configuration")
 commit_app = typer.Typer(help="Commit configuration changes")
-test_app = typer.Typer(help="Test PAN-OS connectivity")
-show_app = typer.Typer(help="Show PAN-OS objects in detail")
+test_app = typer.Typer(help="Test various PAN-OS operations")
+show_app = typer.Typer(help="Read operations for PAN-OS configuration")
 
 # Register sub-apps
 app.add_typer(set_app, name="set")
