@@ -159,6 +159,51 @@ Load address objects from a YAML file:
 pan-os-cli load objects address --file addresses.yaml
 ```
 
+### Testing Address Object Creation
+
+```bash
+pan-os-cli test objects addresses [OPTIONS]
+```
+
+This command creates a specified number of address objects with randomly generated names and IP addresses to test performance and functionality.
+
+#### Test Command Options
+
+| Option | Description | Required |
+|--------|-------------|----------|
+| `--count` | Number of address objects to create (default: 10) | No |
+| `--device-group` | Device group (Panorama only, default: "Shared") | No |
+| `--vsys` | Virtual system name (default: "vsys1") | No |
+| `--threads` | Number of threads for parallel processing (default: 10) | No |
+| `--mock` | Run in mock mode without making API calls | No |
+| `--commit` | Commit changes after creating objects | No |
+
+#### Test Command Examples
+
+Create 100 address objects in the default device group:
+
+```bash
+pan-os-cli test objects addresses --count 100
+```
+
+Create 500 address objects in a specific device group with 20 worker threads:
+
+```bash
+pan-os-cli test objects addresses --count 500 --device-group LAB_DG --threads 20
+```
+
+#### Address Naming Convention
+
+When using the `test objects addresses` command, address objects are created with readable, human-friendly names using the following format:
+
+```text
+<adjective>-<noun>-<timestamp>
+```
+
+For example: `happy-cloud-1712178550`
+
+This naming convention makes test objects easily identifiable while ensuring uniqueness through the timestamp component. The adjectives and nouns are randomly selected from predefined lists to create memorable combinations.
+
 ## YAML Structure for Bulk Loading
 
 For bulk loading operations, use the following YAML structure:
