@@ -4,9 +4,10 @@ import concurrent.futures
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from panos.errors import PanDeviceError, PanXapiError
+from panos.objects import AddressGroup, AddressObject
 from panos.panorama import DeviceGroup, Panorama
 from rich.console import Console
 
@@ -70,18 +71,18 @@ class PanosClient:
             logger.error(error_msg)
             raise ValueError(error_msg) from e
 
-    def _get_device_group(self, device_group: str) -> Optional[DeviceGroup]:
+    def _get_device_group_or_shared(self, device_group: str) -> DeviceGroup:
         """
-        Get device group object.
+        Get device group object or shared.
 
         Args:
             device_group: Name of the device group
 
         Returns:
-            DeviceGroup object or None for "Shared"
+            DeviceGroup object or shared
         """
-        if device_group.lower() in ["shared", "-shared"]:
-            return None
+        if device_group.lower() in ["shared"]:
+            return self.device
 
         dg = DeviceGroup(name=device_group)
         self.device.add(dg)
@@ -106,7 +107,7 @@ class PanosClient:
             Exception: If all retries fail
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would execute {func.__name__} with args {args} {kwargs}")
+            logger.debug(f"MOCK: Would execute {func.__name__} with args {args} {kwargs}")
             return None
 
         retry_count = 0
@@ -143,29 +144,24 @@ class PanosClient:
 
         Args:
             objects_to_add: List of PAN-OS objects to add
-            device_group: Device group to add objects to
+            device_group: Device group to add the objects to
 
         Returns:
-            List of futures for the operations
+            List of Future objects representing the pending create operations
         """
-        if self.config.mock_mode:
-            logger.info(f"MOCK: Would add {len(objects_to_add)} objects to {device_group}")
-            console.print(
-                f"[bold green]MOCK:[/] Adding {len(objects_to_add)} objects to {device_group}"
-            )
-            return []
-
-        dg = self._get_device_group(device_group)
-        parent = dg if dg else self.device
+        # Get the parent object
+        parent = self._get_device_group_or_shared(device_group)
 
         futures = []
         for obj in objects_to_add:
+            # Convert Pydantic model to pan-os-python object if it has to_panos_object method
+            if hasattr(obj, "to_panos_object"):
+                obj = obj.to_panos_object()
+
             # Add object to the parent
             parent.add(obj)
             # Submit create operation to thread pool
-            future = self.executor.submit(
-                self._execute_with_retry, obj.create, retry_on_exception=True
-            )
+            future = self.executor.submit(self._execute_with_retry, obj.create)
             futures.append(future)
 
         return futures
@@ -184,14 +180,11 @@ class PanosClient:
             List of futures for the operations
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would update {len(objects_to_update)} objects in {device_group}")
-            console.print(
-                f"[bold green]MOCK:[/] Updating {len(objects_to_update)} objects in {device_group}"
-            )
+            logger.debug(f"MOCK: Would update {len(objects_to_update)} objects in {device_group}")
             return []
 
-        dg = self._get_device_group(device_group)
-        parent = dg if dg else self.device
+        dg = self._get_device_group_or_shared(device_group)
+        parent = dg
 
         futures = []
         for obj in objects_to_update:
@@ -219,15 +212,11 @@ class PanosClient:
             List of futures for the operations
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would delete {len(objects_to_delete)} objects from {device_group}")
-            console.print(
-                f"[bold green]MOCK:[/] Deleting {len(objects_to_delete)} objects from "
-                f"{device_group}"
-            )
+            logger.debug(f"MOCK: Would delete {len(objects_to_delete)} objects from {device_group}")
             return []
 
-        dg = self._get_device_group(device_group)
-        parent = dg if dg else self.device
+        dg = self._get_device_group_or_shared(device_group)
+        parent = dg
 
         futures = []
         for obj in objects_to_delete:
@@ -253,14 +242,11 @@ class PanosClient:
             List of objects
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would get all {obj_class.__name__} objects from {device_group}")
-            console.print(
-                f"[bold green]MOCK:[/] Getting all {obj_class.__name__} objects from {device_group}"
-            )
+            logger.debug(f"MOCK: Would get all {obj_class.__name__} objects from {device_group}")
             return []
 
-        dg = self._get_device_group(device_group)
-        parent = dg if dg else self.device
+        dg = self._get_device_group_or_shared(device_group)
+        parent = dg
 
         # Create a dummy object to use for the API call
         dummy_obj = obj_class()
@@ -273,20 +259,27 @@ class PanosClient:
             logger.error(f"Failed to get objects: {str(e)}")
             raise
 
-    def commit(self) -> str:
+    def commit(self, admins: Optional[str] = None) -> str:
         """
         Commit configuration changes to PAN-OS.
+
+        Args:
+            admins: Optional admins for the commit
 
         Returns:
             Commit job ID or mock message
         """
         if self.config.mock_mode:
-            logger.info("MOCK: Would commit changes")
-            console.print("[bold green]MOCK:[/] Committing changes")
+            admins_msg = f" with admins: {admins}" if admins else ""
+            logger.debug(f"MOCK: Would commit changes{admins_msg}")
             return "mock-job-12345"
 
         try:
-            result = self._execute_with_retry(self.device.commit, sync=False)
+            commit_params = {}
+            if admins:
+                # Use admin parameter instead since description is not supported
+                commit_params["admins"] = admins
+            result = self._execute_with_retry(self.device.commit, sync=False, **commit_params)
             job_id = result.get("id")
             logger.info(f"Commit initiated with job ID: {job_id}")
             return job_id
@@ -305,8 +298,7 @@ class PanosClient:
             Dictionary with commit status
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would check status of commit job {job_id}")
-            console.print(f"[bold green]MOCK:[/] Checking status of commit job {job_id}")
+            logger.debug(f"MOCK: Would check status of commit job {job_id}")
             return {"status": "success", "progress": 100}
 
         try:
@@ -329,8 +321,7 @@ class PanosClient:
             Final job status
         """
         if self.config.mock_mode:
-            logger.info(f"MOCK: Would wait for job {job_id}")
-            console.print(f"[bold green]MOCK:[/] Waiting for job {job_id}")
+            logger.debug(f"MOCK: Would wait for job {job_id}")
             return {"status": "success", "progress": 100}
 
         start_time = time.time()
@@ -343,3 +334,467 @@ class PanosClient:
             time.sleep(interval)
 
         raise TimeoutError(f"Job {job_id} did not complete within {timeout} seconds")
+
+    # Methods for specific object types required by the commands module
+
+    def create_address_object(self, address: AddressObject, device_group: str = "Shared") -> bool:
+        """Create an address object."""
+        # Handle mock mode
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would create address object {address.name} in {device_group}")
+            return True
+
+        # Get the parent device group
+        dg = self._get_device_group_or_shared(device_group)
+
+        # Have the address ensure its tags exist first
+        if hasattr(address, "ensure_tags_exist"):
+            address.ensure_tags_exist(dg)
+
+        # Convert the address object to a PAN-OS object and add it to the device group
+        try:
+            panw_obj = address.to_panos_object()
+            dg.add(panw_obj)
+            panw_obj.create()
+            logger.debug(f"Successfully created address {address.name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create address {address.name}: {str(e)}")
+            raise
+
+    def create_address_group(
+        self, address_group: AddressGroup, device_group: str = "Shared"
+    ) -> bool:
+        """Create an address group."""
+        # Handle mock mode
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would create address group {address_group.name} in {device_group}")
+            return True
+
+        # Get the parent device group
+        dg = self._get_device_group_or_shared(device_group)
+
+        logger.info(f"Ensuring tags exist for address group {address_group.name}")
+        # Have the address group ensure its tags exist first
+        if hasattr(address_group, "ensure_tags_exist"):
+            address_group.ensure_tags_exist(dg)
+
+        # Convert the address group to a PAN-OS object and add it to the device group
+        try:
+            panw_obj = address_group.to_panos_object()
+            dg.add(panw_obj)
+            panw_obj.create()
+            logger.info(f"Successfully created address group {address_group.name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create address group {address_group.name}: {str(e)}")
+            raise
+
+    def delete_address_object(self, name: str, device_group: str = "Shared") -> bool:
+        """
+        Delete an address object.
+
+        Args:
+            name: Name of the address object to delete
+            device_group: Device group containing the address
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would delete address object {name} from {device_group}")
+            return True
+
+        try:
+            dg = self._get_device_group_or_shared(device_group)
+
+            # Create a temporary object for deletion
+            obj = AddressObject(name=name)
+            dg.add(obj)
+
+            # Delete the object
+            self._execute_with_retry(obj.delete)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete address object: {str(e)}")
+            raise
+
+    def delete_address_group(self, name: str, device_group: str = "Shared") -> bool:
+        """
+        Delete an address group.
+
+        Args:
+            name: Name of the address group to delete
+            device_group: Device group containing the group
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would delete address group {name} from {device_group}")
+            return True
+
+        try:
+            dg = self._get_device_group_or_shared(device_group)
+
+            # Create a temporary object for deletion
+            obj = AddressGroup(name=name)
+            dg.add(obj)
+
+            # Delete the object
+            self._execute_with_retry(obj.delete)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete address group: {str(e)}")
+            raise
+
+    def list_addresses(self, device_group: str = "Shared") -> List[Dict[str, Any]]:
+        """
+        List all address objects in a device group.
+
+        Args:
+            device_group: Device group to list addresses from
+
+        Returns:
+            List of address objects as dictionaries
+        """
+        if self.config.mock_mode:
+            return self._mock_list_addresses(device_group)
+
+        try:
+            from panos.objects import AddressObject
+
+            dg = self._get_device_group_or_shared(device_group)
+            # Use the proper refreshall pattern with parent object
+            address_objects = AddressObject.refreshall(dg)
+
+            # Debug log to inspect objects
+            self._debug_log_objects(address_objects)
+
+            # Convert to list of dictionaries
+            addresses = [self._convert_address_to_dict(obj) for obj in address_objects]
+            return addresses
+
+        except Exception as e:
+            logger.error(f"Failed to list address objects: {str(e)}")
+            raise
+
+    def _mock_list_addresses(self, device_group: str) -> List[Dict[str, Any]]:
+        """Return mock address data for testing without API calls."""
+        logger.debug(f"MOCK: Would list address objects from {device_group}")
+        return [
+            {
+                "name": "mock-server1",
+                "type": "ip-netmask",
+                "value": "10.0.0.1/32",
+                "description": "Mock server 1",
+                "tag": ["mock"],
+            },
+            {
+                "name": "mock-server2",
+                "type": "ip-netmask",
+                "value": "10.0.0.2/32",
+                "description": "Mock server 2",
+                "tag": ["mock"],
+            },
+        ]
+
+    def _debug_log_objects(self, objects: List[Any]) -> None:
+        """Log debug information about PAN-OS objects."""
+        for obj in objects:
+            logger.debug(f"Object name: {obj.name}")
+            logger.debug(f"Object attributes: {dir(obj)}")
+            logger.debug(f"Object vars: {vars(obj)}")
+
+    def _convert_address_to_dict(self, obj: Any) -> Dict[str, Any]:
+        """Convert a PAN-OS address object to a dictionary."""
+        # Base address dict with common properties
+        addr_dict = {
+            "name": obj.name,
+            "description": obj.description or "",
+            "tag": obj.tag or [],
+        }
+
+        # Extract address value based on type
+        self._extract_address_value(obj, addr_dict)
+
+        return addr_dict
+
+    def _extract_address_value(self, obj: Any, addr_dict: Dict[str, Any]) -> None:
+        """Extract the address value based on its type."""
+        # Determine address type
+        addr_type = getattr(obj, "type", "Unknown") if hasattr(obj, "type") else "Unknown"
+
+        # Try getting values based on type attributes
+        if addr_type == "ip-netmask" or (hasattr(obj, "value") and obj.value):
+            addr_dict["ip-netmask"] = obj.value
+        elif addr_type == "fqdn" or (hasattr(obj, "fqdn") and obj.fqdn):
+            addr_dict["fqdn"] = obj.fqdn
+        elif addr_type == "ip-range" or (hasattr(obj, "ip_range") and obj.ip_range):
+            addr_dict["ip-range"] = obj.ip_range
+        else:
+            # Try to extract from XML element if available
+            self._extract_from_element(obj, addr_dict)
+
+    def _extract_from_element(self, obj: Any, addr_dict: Dict[str, Any]) -> None:
+        """Extract address information from the XML element if available."""
+        if not hasattr(obj, "element") or obj.element is None:
+            return
+
+        try:
+            # Check for ip-netmask
+            ip_netmask = obj.element.find("./ip-netmask")
+            if ip_netmask is not None and ip_netmask.text:
+                addr_dict["ip-netmask"] = ip_netmask.text
+                return
+
+            # Check for fqdn
+            fqdn = obj.element.find("./fqdn")
+            if fqdn is not None and fqdn.text:
+                addr_dict["fqdn"] = fqdn.text
+                return
+
+            # Check for ip-range
+            ip_range = obj.element.find("./ip-range")
+            if ip_range is not None and ip_range.text:
+                addr_dict["ip-range"] = ip_range.text
+        except Exception as e:
+            logger.debug(f"Error accessing element data: {str(e)}")
+
+    def get_address_group(self, name: str, device_group: str = "Shared") -> Optional[AddressGroup]:
+        """
+        Get a specific address group from a device group.
+
+        Args:
+            name: Name of the address group to get
+            device_group: Device group to get the address group from
+
+        Returns:
+            The address group object or None if not found
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would get address group {name} from {device_group}")
+            # Create a mock address group
+            mock_group = AddressGroup(
+                name=name,
+                static_value=["mock-server1", "mock-server2"],
+                description="Mock address group",
+            )
+            mock_group.tag = ["mock"]
+            return mock_group
+
+        try:
+            dg = self._get_device_group_or_shared(device_group)
+            group = AddressGroup(name=name)
+            dg.add(group)
+
+            try:
+                group.refresh()
+                return group
+            except PanDeviceError:
+                # Group not found
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to get address group: {str(e)}")
+            raise
+
+    def get_address_groups(self, device_group: str) -> List[AddressGroup]:
+        """
+        Get all address groups from a device group.
+
+        Args:
+            device_group: Device group to get address groups from
+
+        Returns:
+            List of address group objects
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would get address groups from {device_group}")
+            # Create mock address groups
+            mock_groups = [
+                AddressGroup(
+                    name="mock-group1",
+                    static_value=["mock-server1", "mock-server2"],
+                    description="Mock group 1",
+                ),
+                AddressGroup(
+                    name="mock-group2", static_value=["mock-server2"], description="Mock group 2"
+                ),
+            ]
+            # Add tags to mock groups
+            for group in mock_groups:
+                group.tag = ["mock"]
+            return mock_groups
+
+        try:
+            dg = self._get_device_group_or_shared(device_group)
+            # Use the proper refreshall pattern with parent object
+            return AddressGroup.refreshall(dg)
+
+        except Exception as e:
+            logger.error(f"Failed to get address groups: {str(e)}")
+            raise
+
+    def list_address_groups(self, device_group: str = "Shared") -> List[Dict[str, Any]]:
+        """
+        List all address groups in a device group.
+
+        Args:
+            device_group: Device group to list address groups from
+
+        Returns:
+            List of address groups as dictionaries
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would list address groups from {device_group}")
+            return [
+                {
+                    "name": "mock-group1",
+                    "static_value": ["mock-server1", "mock-server2"],
+                    "description": "Mock group 1",
+                    "tag": ["mock"],
+                },
+                {
+                    "name": "mock-group2",
+                    "static_value": ["mock-server2"],
+                    "description": "Mock group 2",
+                    "tag": ["mock"],
+                },
+            ]
+
+        try:
+            from panos.objects import AddressGroup
+
+            dg = self._get_device_group_or_shared(device_group)
+            # Use the proper refreshall pattern with parent object
+            address_groups = AddressGroup.refreshall(dg)
+
+            # Debug log to inspect objects
+            for obj in address_groups:
+                logger.debug(f"Group name: {obj.name}")
+                logger.debug(f"Group attributes: {dir(obj)}")
+                logger.debug(f"Group vars: {vars(obj)}")
+
+            # Convert to list of dictionaries
+            groups = []
+            for obj in address_groups:
+                groups.append(
+                    {
+                        "name": obj.name,
+                        "static_value": obj.static_value or [],
+                        "dynamic_value": obj.dynamic_value,
+                        "description": obj.description or "",
+                        "tag": obj.tag or [],
+                    }
+                )
+
+            return groups
+
+        except Exception as e:
+            logger.error(f"Failed to list address groups: {str(e)}")
+            raise
+
+    def get_address(self, name: str, device_group: str = "Shared") -> Optional[AddressObject]:
+        """
+        Get a specific address object from a device group.
+
+        Args:
+            name: Name of the address object to get
+            device_group: Device group to get the address from
+
+        Returns:
+            The address object or None if not found
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would get address {name} from {device_group}")
+            # Create a mock address
+            mock_address = AddressObject(
+                name=name, value="10.0.0.1/32", type="ip-netmask", description="Mock address object"
+            )
+            mock_address.tag = ["mock"]
+            return mock_address
+
+        try:
+            dg = self._get_device_group_or_shared(device_group)
+            address = AddressObject(name=name)
+            dg.add(address)
+
+            try:
+                address.refresh()
+                return address
+            except PanDeviceError:
+                # Address not found
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get address: {str(e)}")
+            raise
+
+    def _ensure_tags_exist(self, tags: List[str], device_group: str = "Shared") -> None:
+        """
+        Ensure that all specified tags exist in PAN-OS before using them.
+        Creates any missing tags.
+
+        Args:
+            tags: List of tag names to check/create
+            device_group: Device group to add the tags to
+        """
+        if self.config.mock_mode:
+            logger.debug(f"MOCK: Would ensure tags {tags} exist in {device_group}")
+            return
+
+        try:
+            from panos.objects import Tag
+
+            dg = self._get_device_group_or_shared(device_group)
+
+            # First check if the tags already exist
+            existing_tags = {}
+            # Try to refresh all existing tags
+            try:
+                # Get all existing tags
+                logger.info(f"Checking for existing tags in {device_group}")
+                dummy_tag = Tag(name="__dummy__")
+                dg.add(dummy_tag)
+
+                try:
+                    # This will refresh all tags
+                    dummy_tag.refreshall(dg)
+                    # Find all existing tags and store by name for quick lookup
+                    for tag_obj in dg.findall(Tag):
+                        existing_tags[tag_obj.name] = tag_obj
+                except Exception as e:
+                    logger.warning(f"Error refreshing tags: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Error checking existing tags: {str(e)}")
+
+            # Now create any missing tags - one at a time to ensure they exist before used
+            for tag_name in tags:
+                # Check if tag already exists
+                if tag_name in existing_tags:
+                    logger.info(f"Tag '{tag_name}' already exists")
+                    continue
+
+                logger.info(f"Creating required tag: {tag_name}")
+
+                # Create a new tag object with a default color
+                new_tag = Tag(name=tag_name, color="color1")
+                dg.add(new_tag)
+
+                # Create tag and wait for completion
+                try:
+                    # Direct call to ensure immediate creation - no async
+                    new_tag.create()
+                    logger.info(f"Successfully created tag: {tag_name}")
+
+                    # Add to existing tags to avoid recreating
+                    existing_tags[tag_name] = new_tag
+                except Exception as e:
+                    error_msg = f"Failed to create tag '{tag_name}': {str(e)}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg) from e
+
+        except Exception as e:
+            error_msg = f"Failed to ensure tags exist: {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg) from e

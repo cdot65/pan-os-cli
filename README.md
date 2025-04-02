@@ -22,6 +22,7 @@ A CLI tool for efficiently managing PAN-OS configurations with multi-threading s
 - **Efficient Multi-Threading**: Configurable thread pool for parallel API operations
 - **Bulk Operations**: Load hundreds of objects from YAML files with a single command
 - **Comprehensive Error Handling**: Built-in retry mechanism with exponential backoff
+- **Intelligent Naming Convention**: Address objects created with the test command use a readable format of `<adjective>-<noun>-<timestamp>`
 - **Configurable**: Works with environment variables or configuration file
 - **Mock Mode**: Test commands without making actual API calls
 - **Rich Console Output**: Clear, informative output with status indicators
@@ -102,6 +103,9 @@ pan-os-cli get objects address  # Lists all
 # Show detailed address information
 pan-os-cli show addresses --device-group "Shared"
 pan-os-cli show addresses --name web-server
+
+# Test creating multiple address objects
+pan-os-cli test objects addresses --count 500 --device-group LAB_DG
 ```
 
 #### Address Group Management

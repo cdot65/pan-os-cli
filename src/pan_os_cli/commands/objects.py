@@ -1,6 +1,7 @@
 """Commands for managing PAN-OS address objects and groups."""
 
 import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -9,9 +10,17 @@ from typing import List, Optional
 import typer
 from panos.errors import PanDeviceError, PanXapiError
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
-from pan_os_cli.client import PanOSClient
+from pan_os_cli.client import PanosClient
 from pan_os_cli.config import get_or_create_config
 from pan_os_cli.models.objects import Address, AddressGroup
 from pan_os_cli.utils import (
@@ -23,6 +32,9 @@ from pan_os_cli.utils import (
 # Console setup
 console = Console()
 logger = logging.getLogger(__name__)
+
+# Create Typer app for this command module
+app = typer.Typer()
 
 # Define Typer option defaults as module-level singletons
 EMPTY_LIST = []
@@ -45,7 +57,8 @@ app = typer.Typer()
 
 def create_client(mock=False, threads=10):
     """Create a PAN-OS client."""
-    return PanOSClient(get_or_create_config(), mock=mock, threads=threads)
+    config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+    return PanosClient(config)
 
 
 @app.command("set-address")
@@ -85,7 +98,8 @@ def set_address(
         )
 
         # Connect to PAN-OS and create the object
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
         result = client.create_address_object(address, devicegroup)
 
         if result:
@@ -130,7 +144,8 @@ def set_address_group(
         )
 
         # Connect to PAN-OS and create the object
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
         result = client.create_address_group(address_group, devicegroup)
 
         if result:
@@ -158,7 +173,8 @@ def delete_address(
         console.print(f"Deleting address: [bold blue]{name}[/]")
 
         # Connect to PAN-OS and delete the object
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
         result = client.delete_address_object(name, devicegroup)
 
         if result:
@@ -186,7 +202,8 @@ def delete_address_group(
         console.print(f"Deleting address group: [bold blue]{name}[/]")
 
         # Connect to PAN-OS and delete the object
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
         result = client.delete_address_group(name, devicegroup)
 
         if result:
@@ -220,14 +237,15 @@ def load_address(
 
         # Load and validate address objects from YAML
         yaml_data = load_yaml_file(file)
-        panos_objects = validate_objects_from_yaml(yaml_data, Address)
+        panos_objects = validate_objects_from_yaml(yaml_data, "addresses", Address)
 
         if not panos_objects:
             console.print("[yellow]Warning:[/] No valid address objects found in the file")
             return
 
         # Connect to PAN-OS
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # Create the objects with multithreading
         with create_progress_tracker(len(panos_objects), "Loading address objects") as progress:
@@ -263,7 +281,7 @@ def load_address(
         # Commit changes if requested
         if commit and successful > 0:
             console.print("Committing changes...")
-            commit_result = client.commit("Address objects bulk load")
+            commit_result = client.commit(admins="Test address objects bulk load")
             console.print(f"Commit job ID: {commit_result}")
 
     except Exception as e:
@@ -301,7 +319,8 @@ def load_address_group(
             return
 
         # Connect to PAN-OS
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # Create the objects with multithreading
         with create_progress_tracker(len(panos_objects), "Loading address groups") as progress:
@@ -361,7 +380,8 @@ def get_address(
 ):
     """Get address objects."""
     try:
-        client = create_client(mock, threads)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # Get addresses from PAN-OS
         try:
@@ -378,13 +398,38 @@ def get_address(
 
 def _get_address_impl(client, name, devicegroup):
     """Implementation for getting address object(s)."""
-    # Get specific address if name is provided
+    # Get addresses based on whether a specific name was provided
+    addresses = _fetch_addresses(client, name, devicegroup)
+
+    # Create a table for display
+    table = Table(title=f"Address Objects in '{devicegroup}'")
+    _setup_address_table_columns(table)
+
+    # Process each address and add to table
+    for addr in addresses:
+        addr_info = _extract_address_info(addr, devicegroup)
+        table.add_row(
+            addr_info["name"],
+            addr_info["type"],
+            addr_info["value"],
+            addr_info["description"],
+            addr_info["tags"],
+        )
+
+    # Display results
+    console.print(table)
+    console.print(f"[bold green]Total:[/] {len(addresses)} address objects")
+
+
+def _fetch_addresses(client, name, devicegroup):
+    """Fetch addresses from PAN-OS based on input parameters."""
     if name:
-        address = client.get_address(devicegroup, name)
+        # Get specific address by name
+        address = client.get_address(name, devicegroup)
         if not address:
             console.print(f"[bold red]Error:[/] Address '{name}' not found.")
             raise typer.Exit(1)
-        addresses = [address]
+        return [address]
     else:
         # Get all addresses
         addresses = client.list_addresses(devicegroup)
@@ -393,38 +438,77 @@ def _get_address_impl(client, name, devicegroup):
                 f"[bold yellow]Warning:[/] No addresses found in device group '{devicegroup}'."
             )
             raise typer.Exit(0)
+        return addresses
 
-    # Create a table
-    table = Table(title=f"Address Objects in '{devicegroup}'")
+
+def _setup_address_table_columns(table):
+    """Set up columns for address display table."""
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
     table.add_column("Value", style="yellow")
     table.add_column("Description")
-    table.add_column("Device Group", style="magenta")
+    table.add_column("Tags")
 
-    # Add rows to the table
-    for addr in addresses:
-        name = addr.get("name", "")
-        description = addr.get("description", "")
 
-        # Determine address type and value
-        addr_type = "Unknown"
-        addr_value = ""
+def _extract_address_info(addr, devicegroup):
+    """Extract relevant information from an address object or dictionary."""
+    # Return structure for consistent data format
+    result = {"name": "", "type": "Unknown", "value": "", "description": "", "tags": ""}
 
-        if addr.get("ip-netmask"):
-            addr_type = "IP/Netmask"
-            addr_value = addr.get("ip-netmask")
-        elif addr.get("ip-range"):
-            addr_type = "IP Range"
-            addr_value = addr.get("ip-range")
-        elif addr.get("fqdn"):
-            addr_type = "FQDN"
-            addr_value = addr.get("fqdn")
+    # Handle different input formats (object vs dictionary)
+    if hasattr(addr, "name"):
+        # Process AddressObject instance
+        _process_address_object(addr, result)
+    else:
+        # Process dictionary format (from list_addresses)
+        _process_address_dict(addr, result)
 
-        table.add_row(name, addr_type, addr_value, description, devicegroup)
+    return result
 
-    console.print(table)
-    console.print(f"[bold green]Total:[/] {len(addresses)} address objects")
+
+def _process_address_object(addr, result):
+    """Process an AddressObject instance to extract information."""
+    # Extract basic info
+    result["name"] = addr.name
+    result["description"] = getattr(addr, "description", "")
+
+    # Process tags
+    if hasattr(addr, "tag") and addr.tag:
+        result["tags"] = ", ".join(addr.tag)
+
+    # Determine address type and value
+    if hasattr(addr, "type"):
+        if addr.type == "ip-netmask":
+            result["type"] = "IP/Netmask"
+            result["value"] = getattr(addr, "value", "")
+        elif addr.type == "ip-range":
+            result["type"] = "IP Range"
+            result["value"] = getattr(addr, "value", "")
+        elif addr.type == "fqdn":
+            result["type"] = "FQDN"
+            result["value"] = getattr(addr, "value", "")
+
+
+def _process_address_dict(addr, result):
+    """Process an address dictionary to extract information."""
+    # Extract basic info
+    result["name"] = addr.get("name", "")
+    result["description"] = addr.get("description", "")
+
+    # Process tags
+    if "tag" in addr and addr["tag"]:
+        result["tags"] = ", ".join(addr["tag"])
+
+    # Determine address type and value
+    if "ip-netmask" in addr and addr["ip-netmask"]:
+        result["type"] = "IP/Netmask"
+        result["value"] = addr["ip-netmask"]
+    elif "ip-range" in addr and addr["ip-range"]:
+        result["type"] = "IP Range"
+        result["value"] = addr["ip-range"]
+    elif "fqdn" in addr and addr["fqdn"]:
+        result["type"] = "FQDN"
+        result["value"] = addr["fqdn"]
 
 
 @app.command("get-address-group")
@@ -442,7 +526,8 @@ def get_address_group(
 ):
     """Get address groups."""
     try:
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # If name is provided, get specific address group, otherwise get all
         groups = []
@@ -477,12 +562,12 @@ def get_address_group(
 
             # Determine address group type and value
             try:
-                if group.static_members:
+                if hasattr(group, "static_value") and group.static_value:
                     group_type = "Static"
-                    group_value = ", ".join(group.static_members)
-                elif group.dynamic_filter:
+                    group_value = ", ".join(group.static_value)
+                elif hasattr(group, "dynamic_value") and group.dynamic_value:
                     group_type = "Dynamic"
-                    group_value = group.dynamic_filter
+                    group_value = group.dynamic_value
             except Exception:
                 pass
 
@@ -518,7 +603,8 @@ def commit_changes(
 ):
     """Commit configuration changes to PAN-OS."""
     try:
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # Commit changes
         console.print("Committing changes to PAN-OS device...")
@@ -566,7 +652,8 @@ def check_commit(
 ):
     """Check the status of a commit job."""
     try:
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
 
         # Check commit status
         console.print(f"Checking status of commit job [bold blue]{job_id}[/]...")
@@ -595,15 +682,23 @@ def test_auth(
 ):
     """Test PAN-OS authentication and connectivity."""
     try:
-        client = PanOSClient(get_or_create_config(), mock=mock)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
+
+        # Handle differently for mock mode
+        if mock:
+            console.print("[bold green]Running in mock mode - no actual connection will be made[/]")
+            console.print("Configuration appears to be valid")
+            console.print("[bold blue]Mock connection successful![/]")
+            return
 
         # Test connectivity using system info refresh
-        console.print(f"Testing connection to [bold blue]{client.hostname}[/]...")
+        console.print(f"Testing connection to [bold blue]{client.config.hostname}[/]...")
         client.device.refresh_system_info()
 
         # Display connection information
         console.print("[bold green]Connection successful![/]")
-        console.print(f"Connected to: [bold blue]{client.hostname}[/]")
+        console.print(f"Connected to: [bold blue]{client.config.hostname}[/]")
 
         # Get device info based on device type
         from panos.panorama import Panorama
@@ -625,6 +720,227 @@ def test_auth(
         raise typer.Exit(1) from e
 
 
+@app.command("addresses")
+def test_addresses(
+    count: int = typer.Option(100, help="Number of address objects to create"),
+    devicegroup: str = typer.Option(
+        SHARED_DEFAULT, "--device-group", "-dg", help="Device group to add addresses to"
+    ),
+    mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
+    threads: int = typer.Option(
+        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
+    ),
+    commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
+):
+    """
+    Test creating multiple address objects using multithreading.
+
+    This command generates a specified number of address objects with unique names based on
+    random words and timestamps, and creates them in PAN-OS using multithreading.
+    """
+    try:
+        # Create client
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
+
+        console.print(f"Generating {count} address objects with random words and timestamps...")
+
+        # Generate test address objects
+        address_objects = []
+        start_time = time.time()
+
+        # Define address types to rotate through
+        addr_types = ["ip-netmask", "fqdn", "ip-range"]
+
+        # Lists for random name generation
+        adjectives = [
+            "red",
+            "blue",
+            "green",
+            "yellow",
+            "purple",
+            "orange",
+            "black",
+            "white",
+            "big",
+            "small",
+            "fast",
+            "slow",
+            "loud",
+            "quiet",
+            "happy",
+            "sad",
+            "brave",
+            "shy",
+            "wild",
+            "calm",
+            "fancy",
+            "plain",
+            "soft",
+            "hard",
+            "hot",
+            "cold",
+            "young",
+            "old",
+            "fresh",
+            "stale",
+            "clean",
+            "dirty",
+            "smooth",
+            "rough",
+        ]
+
+        nouns = [
+            "apple",
+            "banana",
+            "car",
+            "dog",
+            "elephant",
+            "fish",
+            "guitar",
+            "house",
+            "igloo",
+            "jacket",
+            "kite",
+            "lamp",
+            "mountain",
+            "notebook",
+            "ocean",
+            "pencil",
+            "rabbit",
+            "sun",
+            "table",
+            "umbrella",
+            "vase",
+            "window",
+            "xylophone",
+            "zebra",
+            "airport",
+            "book",
+            "cloud",
+            "door",
+            "egg",
+            "flower",
+            "garden",
+            "hat",
+        ]
+
+        for i in range(count):
+            # Get timestamp with milliseconds
+            timestamp = int(time.time() * 1000)
+
+            # Choose random adjective and noun
+            adj = random.choice(adjectives)
+            noun = random.choice(nouns)
+
+            # Choose address type based on index
+            addr_type = addr_types[i % len(addr_types)]
+
+            # Create address object based on type
+            if addr_type == "ip-netmask":
+                # Generate IP in 10.0.0.0/8 range
+                third_octet = (i // 255) % 255
+                fourth_octet = i % 255
+                ip = f"10.0.{third_octet}.{fourth_octet}/32"
+
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}", ip_netmask=ip, description=None, tags=[]
+                )
+            elif addr_type == "fqdn":
+                # Generate unique domain name
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}",
+                    fqdn=f"{adj}-{noun}-{timestamp}.example.com",
+                    description=None,
+                    tags=[],
+                )
+            else:  # ip-range
+                # Generate IP range
+                third_octet = (i // 255) % 255
+                start_ip = f"192.168.{third_octet}.1"
+                end_ip = f"192.168.{third_octet}.10"
+
+                address = Address(
+                    name=f"{adj}-{noun}-{timestamp}",
+                    ip_range=f"{start_ip}-{end_ip}",
+                    description=None,
+                    tags=[],
+                )
+
+            address_objects.append(address)
+
+        generation_time = time.time() - start_time
+        console.print(f"Generated {count} address objects in {generation_time:.2f} seconds")
+
+        # Create address objects using multithreading
+        console.print(f"Creating {count} address objects with {threads} threads...")
+
+        # Create progress bar
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("Creating address objects"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            # Set up progress tracking
+            task = progress.add_task("Creating", total=len(address_objects))
+
+            # Use thread pool to create addresses concurrently
+            successful = 0
+            failed = 0
+
+            # Temporarily increase logging level to suppress excessive messages
+            original_log_level = logger.level
+            logger.setLevel(logging.WARNING)
+
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                # Submit all tasks
+                future_to_obj = {
+                    executor.submit(client.create_address_object, obj, devicegroup): obj
+                    for obj in address_objects
+                }
+
+                for future in as_completed(future_to_obj):
+                    try:
+                        result = future.result()
+                        if result:
+                            successful += 1
+                        else:
+                            failed += 1
+                    except Exception as e:
+                        logger.error(f"Error creating address: {str(e)}")
+                        failed += 1
+
+                    # Update progress
+                    progress.update(task, advance=1)
+
+            # Restore original logging level
+            logger.setLevel(original_log_level)
+
+        # Display results
+        total_time = time.time() - start_time
+        console.print("Address creation results:")
+        console.print(f"Total objects: {count}")
+        console.print(f"Successfully created: {successful}")
+        console.print(f"Failed: {failed}")
+        console.print(f"Total time: {total_time:.2f} seconds")
+        console.print(f"Objects per second: {count / total_time:.2f}")
+
+        # Commit changes if requested
+        if commit and successful > 0:
+            console.print("Committing changes...")
+            commit_result = client.commit(admins="Test address objects bulk load")
+            console.print(f"Commit job ID: {commit_result}")
+
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] {str(e)}")
+        logger.exception("Error in test_addresses")
+        raise typer.Exit(1) from e
+
+
 @app.command("show")
 def show_addresses(
     name: Optional[str] = typer.Option(
@@ -643,7 +959,8 @@ def show_addresses(
 ):
     """Show address objects with detailed information."""
     try:
-        client = create_client(mock, threads)
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        client = PanosClient(config)
         _show_addresses_impl(client, name, device_group)
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
@@ -656,7 +973,7 @@ def _show_addresses_impl(client, name, device_group):
     # Get all addresses or specific address
     try:
         if name:
-            addresses = [client.get_address(device_group, name)]
+            addresses = [client.get_address(name, device_group)]
             if not addresses[0]:
                 console.print(f"[bold red]Error:[/] Address '{name}' not found.")
                 raise typer.Exit(1)
@@ -677,7 +994,7 @@ def _show_addresses_impl(client, name, device_group):
     table.add_column("Type", style="green")
     table.add_column("Value", style="yellow")
     table.add_column("Description")
-    table.add_column("Tags", style="magenta")
+    table.add_column("Tags")
 
     # Add rows to the table
     for addr in addresses:
