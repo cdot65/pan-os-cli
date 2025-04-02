@@ -74,7 +74,7 @@ settings:
 
 ### Command Pattern
 
-```
+```bash
 panos-cli <action> <object-type> <object> [options]
 ```
 
@@ -143,7 +143,9 @@ panos-cli test auth --mock
 ### YAML Format for Bulk Loading
 
 #### Address Objects (addresses.yaml)
+
 ```yaml
+
 addresses:
   - name: web-server-1
     ip_netmask: 192.168.1.10/32
@@ -165,10 +167,13 @@ addresses:
     tags:
       - db
       - production
+
 ```
 
 #### Address Groups (address-groups.yaml)
+
 ```yaml
+
 address_groups:
   - name: web-servers
     static_members:
@@ -185,6 +190,7 @@ address_groups:
     tags:
       - web
       - dynamic
+
 ```
 
 ## Development

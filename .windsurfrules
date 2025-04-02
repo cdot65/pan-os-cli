@@ -1,0 +1,40 @@
+# Project-Specific Rules for Windsurf/Cursor IDEs: `panos-cli`
+
+**instruction 1: Use Python 3.10+ syntax and features**  
+Ensure all code adheres to Python 3.10 or higher (up to <3.14) as specified in `pyproject.toml`. Leverage features like type hints, match statements, and structural pattern matching where applicable, but prioritize compatibility with the `pan-os-python` library and other dependencies.
+
+**instruction 2: Enforce multi-threading for all PAN-OS API interactions**  
+Every function or method interacting with the `pan-os-python` library (e.g., adding objects, committing changes) must use `concurrent.futures.ThreadPoolExecutor` for multi-threaded execution. Default to a thread pool size of 10, configurable via the `PanosConfig` model, and ensure thread safety when accessing shared resources like the `Panorama` client.
+
+**instruction 3: Structure code under `src/panos_cli/` with modular design**  
+Organize all source code within the `src/panos_cli/` directory, separating concerns into `main.py` (CLI entry), `config.py` (settings), `client.py` (API wrapper), `utils.py` (helpers), `models/` (Pydantic models), and `commands/` (Typer commands). Avoid placing logic outside these designated modules to maintain modularity.
+
+**instruction 4: Use Typer for CLI implementation with consistent command pattern**  
+Implement the CLI using Typer with the pattern `<action> <object-type> <object> [options]`. Define sub-apps (`set_app`, `delete_app`, `load_app`) in `main.py` and register specific commands in `commands/` modules (e.g., `objects.py`, `security.py`). Include `--devicegroup` and `--mock` as common options.
+
+**instruction 5: Validate all input data with Pydantic models**  
+Define Pydantic models in `models/` for each supported object type (e.g., `Address`, `SecurityRule`) and use them to validate command inputs and YAML data before passing to `pan-os-python`. Raise clear exceptions for invalid data, integrated with Typer’s error handling.
+
+**instruction 6: Implement mock mode for all API operations**  
+Add a `--mock` flag to every command, controlled by `PanosConfig.mock_mode`. When enabled, log actions to stdout (via `utils.log_action`) instead of making API calls. Ensure the `PanosClient` class skips `Panorama` initialization in mock mode.
+
+**instruction 7: Handle errors with retries and user-friendly messages**  
+Wrap all `pan-os-python` API calls in try-except blocks to catch `PanosAPIError`. Implement a retry mechanism (3 attempts with exponential backoff) for transient failures and use Typer’s `echo` and `exit` for user-friendly error messages (e.g., "Error: API timeout, please check connection").
+
+**instruction 8: Use Poetry for dependency management**  
+Manage all dependencies via `poetry` as defined in `pyproject.toml`. Avoid manual `pip` installs or requirements.txt files. Include core dependencies (`typer`, `pydantic`, `pan-os-python`, etc.) and dev dependencies (`pytest`, `ruff`, etc.) as specified.
+
+**instruction 9: Write tests for all components**  
+Create unit tests in `tests/` for `config.py`, `client.py`, `utils.py`, and `models/`, and integration tests for `commands/`. Use `pytest` with markers (`unit`, `integration`) and mock `pan-os-python` API calls to achieve >80% coverage, verifiable with `pytest-cov`.
+
+**instruction 10: Document code with docstrings and MkDocs**  
+Add detailed docstrings to all classes, functions, and commands following Python’s docstring conventions. Use these to auto-generate API docs in `docs/` with `mkdocstrings` and MkDocs. Ensure user-facing examples match those in `README.md`.
+
+**instruction 11: Enforce code quality with Ruff and pre-commit**  
+Apply Ruff linting and formatting rules as defined in `pyproject.toml` (e.g., line-length=192, target-version=py310). Configure pre-commit hooks to run Ruff, YAML validation, and other checks before commits, ensuring consistent code quality.
+
+**instruction 12: Support bulk operations with YAML parsing**  
+Implement `load` commands in each `commands/` module to parse YAML files using `utils.load_yaml`. Validate parsed data with Pydantic models and process objects in parallel using `PanosClient.add_objects` with multi-threading.
+
+**instruction 13: Avoid direct `pan-os-python` imports outside `client.py`**  
+Restrict direct imports of `pan-os-python` (e.g., `Panorama`, `AddressObject`) to `client.py`. Other modules should interact with the API via the `PanosClient` abstraction to encapsulate multi-threading and mock mode logic.

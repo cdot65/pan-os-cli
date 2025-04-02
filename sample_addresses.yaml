@@ -1,0 +1,66 @@
+---
+addresses:
+  - name: web-server-1
+    ip_netmask: 192.168.1.100/32
+    description: "Web Server 1"
+    tags:
+      - web
+      - production
+  - name: web-server-2
+    ip_netmask: 192.168.1.101/32
+    description: "Web Server 2"
+    tags:
+      - web
+      - production
+  - name: db-server-1
+    ip_netmask: 192.168.2.100/32
+    description: "Database Server 1"
+    tags:
+      - db
+      - production
+  - name: db-server-2
+    ip_netmask: 192.168.2.101/32
+    description: "Database Server 2"
+    tags:
+      - db
+      - production
+  - name: mail-server
+    ip_netmask: 192.168.3.100/32
+    description: "Mail Server"
+    tags:
+      - mail
+      - production
+  - name: dns-server
+    ip_netmask: 192.168.3.200/32
+    description: "DNS Server"
+    tags:
+      - dns
+      - infrastructure
+  - name: internal-network
+    ip_netmask: 192.168.0.0/16
+    description: "Internal Network"
+    tags:
+      - internal
+
+address_groups:
+  - name: web-servers
+    description: "Web Servers Group"
+    static_members:
+      - web-server-1
+      - web-server-2
+    tags:
+      - web
+      - production
+  - name: db-servers
+    description: "Database Servers Group"
+    static_members:
+      - db-server-1
+      - db-server-2
+    tags:
+      - db
+      - production
+  - name: production-servers
+    description: "All Production Servers"
+    dynamic_filter: "'production' in tag"
+    tags:
+      - production
