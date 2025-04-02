@@ -1,0 +1,131 @@
+/* Custom styles for PAN-OS CLI documentation */
+
+:root {
+  --panos-blue: #0073E6;
+  --panos-dark-blue: #00509E;
+  --panos-light-gray: #f5f5f5;
+  --panos-med-gray: #e0e0e0;
+  --panos-dark-gray: #333333;
+}
+
+/* Custom heading styles */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--panos-dark-blue);
+  font-weight: 500;
+}
+
+/* Command blocks */
+.command-block {
+  background-color: var(--panos-light-gray);
+  border-left: 4px solid var(--panos-blue);
+  padding: 1em;
+  margin: 1em 0;
+  border-radius: 0 4px 4px 0;
+}
+
+/* YAML example styling */
+.yaml-example {
+  background-color: var(--panos-light-gray);
+  border-radius: 4px;
+  padding: 1em;
+  margin: 1em 0;
+  border: 1px solid var(--panos-med-gray);
+}
+
+/* Button styling */
+.md-button {
+  background-color: var(--panos-blue);
+  color: white !important;
+  border-radius: 4px;
+  padding: 0.5em 1em;
+  transition: background-color 0.3s;
+}
+
+.md-button:hover {
+  background-color: var(--panos-dark-blue);
+  text-decoration: none;
+}
+
+/* Table improvements */
+table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+th {
+  background-color: var(--panos-blue);
+  color: white;
+  text-align: left;
+  padding: 0.5em;
+}
+
+td {
+  padding: 0.5em;
+  border-bottom: 1px solid var(--panos-med-gray);
+}
+
+tr:nth-child(even) {
+  background-color: var(--panos-light-gray);
+}
+
+/* Admonition custom styling */
+.admonition.panos {
+  border-left-color: var(--panos-blue);
+}
+
+.admonition.panos > .admonition-title {
+  background-color: rgba(0, 115, 230, 0.1);
+  color: var(--panos-dark-blue);
+}
+
+.admonition.panos > .admonition-title::before {
+  color: var(--panos-blue);
+}
+
+/* Terminal examples */
+.terminal-example {
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.5em 0;
+}
+
+/* Code blocks */
+code {
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 85%;
+  background-color: var(--panos-light-gray);
+}
+
+pre code {
+  padding: 0;
+  background-color: transparent;
+}
+
+/* Footer customization */
+.md-footer {
+  background-color: var(--panos-dark-gray);
+}
+
+.md-footer-meta {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Custom container for examples */
+.example-container {
+  border: 1px solid var(--panos-med-gray);
+  border-radius: 4px;
+  padding: 1em;
+  margin: 1em 0;
+  background-color: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.example-container h4 {
+  margin-top: 0;
+  color: var(--panos-blue);
+  border-bottom: 1px solid var(--panos-med-gray);
+  padding-bottom: 0.5em;
+}

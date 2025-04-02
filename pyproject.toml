@@ -27,6 +27,13 @@ mkdocs-material = "^9.4.7"
 flake8 = "^7.2.0"
 yamllint = "^1.37.0"
 checkov = "^3.2.396"
+mkdocstrings = "^0.29.1"
+mkdocstrings-python = "^1.16.8"
+pymdown-extensions = "^10.14.3"
+mkdocs-minify-plugin = "^0.8.0"
+mkdocs-git-revision-date-localized-plugin = "^1.4.5"
+mkdocs-mermaid2-plugin = "^1.2.1"
+mkdocs-linkcheck = "^1.0.6"
 
 [tool.poetry.scripts]
 pan-os-cli = "pan_os_cli.main:app"
