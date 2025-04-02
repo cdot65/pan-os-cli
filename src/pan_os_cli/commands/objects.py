@@ -679,12 +679,12 @@ def show_addresses(
             # Create a Rich table with rounded corners
             table = Table(show_header=True, header_style="bold", box=rich.box.ROUNDED)
             
-            # Add columns
-            table.add_column("Name", style="cyan")
-            table.add_column("Type", style="green")
-            table.add_column("Value", style="yellow")
-            table.add_column("Description")
-            table.add_column("Device Group", style="magenta")
+            # Add columns with specified widths
+            table.add_column("Name", style="cyan", width=20)
+            table.add_column("Type", style="green", width=15)
+            table.add_column("Value", style="yellow", width=30)
+            table.add_column("Description", width=30)
+            table.add_column("Device Group", style="magenta", width=20)
             
             # Add rows
             for addr in addresses:

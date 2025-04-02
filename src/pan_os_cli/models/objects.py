@@ -33,7 +33,9 @@ class Address(BaseModel):
             ipaddress.ip_network(v)
             return v
         except ValueError:
-            raise ValueError(f"Invalid IP address or network: {v}")
+            raise ValueError(f"Invalid IP address or network: {v}. Please use CIDR notation (e.g., 192.168.1.0/24).")
+        except Exception as e:
+            raise ValueError(f"Invalid IP address format: {v}. Please provide a valid IP address or network. Error: {str(e)}")
 
     @validator("ip_range", pre=True)
     def validate_ip_range(cls, v):
