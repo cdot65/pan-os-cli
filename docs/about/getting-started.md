@@ -11,10 +11,13 @@ Before using PAN-OS CLI, you need to set up the connection to your PAN-OS device
 You can set environment variables for your PAN-OS device credentials:
 
 ```bash
-export panos_username="EXAMPLE_USERNAME_HERE"
-export panos_password="EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
-export panos_host="EXAMPLE_HOSTNAME_HERE"
+# Recommended: Use uppercase PANOS_ prefix (these are preferred)
+export PANOS_USERNAME="EXAMPLE_USERNAME_HERE"
+export PANOS_PASSWORD="EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
+export PANOS_HOSTNAME="EXAMPLE_HOSTNAME_HERE"
 ```
+
+> **Important**: The uppercase `PANOS_` prefix variables are preferred and more reliable. The lowercase variables may not work in all cases. For more details, see the [Configuration Guide](/guide/configuration/).
 
 ### Using Configuration File
 

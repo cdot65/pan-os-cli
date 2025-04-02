@@ -26,9 +26,9 @@ PAN-OS CLI is a powerful tool designed to simplify the management of Palo Alto N
 pip install pan-os-cli
 
 # Set environment variables
-export panos_username="EXAMPLE_USERNAME_HERE"
-export panos_password="EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
-export panos_host="EXAMPLE_HOSTNAME_HERE"
+export PANOS_USERNAME="EXAMPLE_USERNAME_HERE"
+export PANOS_PASSWORD="EXAMPLE_PASSWORD_HERE" # pragma: allowlist secret
+export PANOS_HOST="EXAMPLE_HOSTNAME_HERE"
 
 # Create an address object
 pan-os-cli set objects address --name web-server --ip-netmask 192.168.1.100/32

@@ -2,6 +2,7 @@
 
 import logging
 import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import List, Optional
 import typer
 from panos.errors import PanDeviceError, PanXapiError
 from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -23,11 +26,7 @@ from rich.table import Table
 from pan_os_cli.client import PanosClient
 from pan_os_cli.config import get_or_create_config
 from pan_os_cli.models.objects import Address, AddressGroup
-from pan_os_cli.utils import (
-    create_progress_tracker,
-    load_yaml_file,
-    validate_objects_from_yaml,
-)
+from pan_os_cli.utils import create_progress_tracker, load_yaml, validate_objects_from_yaml
 
 # Console setup
 console = Console()
@@ -236,7 +235,7 @@ def load_address(
             raise typer.Exit(1)
 
         # Load and validate address objects from YAML
-        yaml_data = load_yaml_file(file)
+        yaml_data = load_yaml(file)
         panos_objects = validate_objects_from_yaml(yaml_data, "addresses", Address)
 
         if not panos_objects:
@@ -311,7 +310,7 @@ def load_address_group(
             raise typer.Exit(1)
 
         # Load and validate address group objects from YAML
-        yaml_data = load_yaml_file(file)
+        yaml_data = load_yaml(file)
         panos_objects = validate_objects_from_yaml(yaml_data, AddressGroup)
 
         if not panos_objects:
@@ -721,7 +720,7 @@ def test_auth(
 
 
 @app.command("addresses")
-def test_addresses(
+def test_addresses(  # noqa: C901
     count: int = typer.Option(100, help="Number of address objects to create"),
     devicegroup: str = typer.Option(
         SHARED_DEFAULT, "--device-group", "-dg", help="Device group to add addresses to"
@@ -731,14 +730,36 @@ def test_addresses(
         THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
     ),
     commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
+    monitor_threads: bool = typer.Option(
+        False, "--monitor-threads", help="Monitor and display thread activity"
+    ),
 ):
     """
     Test creating multiple address objects using multithreading.
 
-    This command generates a specified number of address objects with unique names based on
-    random words and timestamps, and creates them in PAN-OS using multithreading.
+    This command generates and creates multiple address objects on a PAN-OS device.
+    Use the --monitor-threads flag to visualize thread activity during execution.
+    Thread monitoring is automatically enabled when using more than 5 threads.
+
+    The thread monitoring display shows:
+    - Active Threads: Currently running threads with their IDs and object being processed
+    - Thread Utilization: Current and maximum thread usage as a percentage
+    - Task Progress: Number of completed tasks out of the total
+
+    This helps optimize the thread count for your specific environment and
+    verify that all threads are being utilized effectively.
     """
+    # Early debug
     try:
+        # Print out available flags for debugging
+        console.print("[bold cyan]DEBUG: Command arguments:[/bold cyan]")
+        console.print(f"count={count}, devicegroup={devicegroup}, mock={mock}")
+        console.print(f"threads={threads}, commit={commit}, monitor_threads={monitor_threads}")
+
+        # Work with existing flags if --monitor-threads isn't recognized
+        # If thread count is > 5, enable thread monitoring as a temporary measure
+        enable_thread_monitoring = monitor_threads or threads > 5
+
         # Create client
         config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
         client = PanosClient(config)
@@ -875,50 +896,183 @@ def test_addresses(
         # Create address objects using multithreading
         console.print(f"Creating {count} address objects with {threads} threads...")
 
-        # Create progress bar
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("Creating address objects"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-        ) as progress:
-            # Set up progress tracking
+        # Dictionary to track active threads
+        active_threads = {}
+        active_threads_lock = threading.Lock()
+
+        # Thread stats
+        thread_stats = {
+            "max_concurrent": 0,
+            "total_tasks": count,
+            "completed_tasks": 0,
+            "active_threads_history": [],
+        }
+
+        # Create a wrapper function that executes in the thread and tracks its ID
+        def create_address_with_monitoring(obj, devicegroup):
+            # Get the actual thread ID from within the worker thread
+            thread_id = threading.get_ident()
+
+            # Register this thread as active
+            with active_threads_lock:
+                active_threads[thread_id] = {
+                    "object_name": obj.name,
+                    "start_time": time.time(),
+                }
+                # Update max concurrent threads right after adding
+                thread_stats["max_concurrent"] = max(
+                    thread_stats["max_concurrent"], len(active_threads)
+                )
+
+            # If in mock mode, add a small delay to ensure threads overlap
+            if mock:
+                time.sleep(random.uniform(0.05, 0.1))
+
+            # Execute the actual work
+            try:
+                result = client.create_address_object(obj, devicegroup)
+                return result
+            finally:
+                # Ensure thread is marked as completed even if an exception occurs
+                with active_threads_lock:
+                    if thread_id in active_threads:
+                        del active_threads[thread_id]
+                    thread_stats["completed_tasks"] += 1
+
+        # Temporarily increase logging level to suppress excessive messages
+        original_log_level = logger.level
+        logger.setLevel(logging.WARNING)
+
+        # Track successful and failed operations
+        successful = 0
+        failed = 0
+
+        # Setup for thread monitoring if enabled
+        if enable_thread_monitoring:
+            # Create a table for displaying thread statistics
+            def get_thread_table():
+                table = Table(title=f"Thread Utilization ({len(active_threads)}/{threads} active)")
+                table.add_column("Thread ID", justify="right", style="cyan")
+                table.add_column("Object Name", style="green")
+                table.add_column("Status", style="yellow")
+
+                with active_threads_lock:
+                    # Add currently active threads to the table
+                    for thread_id, details in active_threads.items():
+                        table.add_row(
+                            str(thread_id),
+                            details["object_name"],
+                            "Active",
+                        )
+
+                # Add thread stats to the table
+                max_usage_percentage = (
+                    (thread_stats["max_concurrent"] / threads) * 100 if threads > 0 else 0
+                )
+                current_usage_percentage = (
+                    (len(active_threads) / threads) * 100 if threads > 0 else 0
+                )
+
+                table.add_row(
+                    "SUMMARY",
+                    "",
+                    f"Max Concurrent: {thread_stats['max_concurrent']} "
+                    f"({max_usage_percentage:.1f}%)",
+                )
+                table.add_row(
+                    "",
+                    "",
+                    f"Current: {len(active_threads)}/{threads} ({current_usage_percentage:.1f}%)",
+                )
+                table.add_row(
+                    "",
+                    "",
+                    f"Completed: {thread_stats['completed_tasks']}/{thread_stats['total_tasks']}",
+                )
+
+                return Panel(table)
+
+            # Create progress bar for monitoring
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("Creating address objects"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=console,
+            )
             task = progress.add_task("Creating", total=len(address_objects))
 
-            # Use thread pool to create addresses concurrently
-            successful = 0
-            failed = 0
+            # Start live display that will update with thread information
+            with Live(get_thread_table(), refresh_per_second=4, console=console) as live:
+                with ThreadPoolExecutor(max_workers=threads) as executor:
+                    # Submit all tasks and track the threads
+                    future_to_obj = {}
+                    for obj in address_objects:
+                        future = executor.submit(create_address_with_monitoring, obj, devicegroup)
 
-            # Temporarily increase logging level to suppress excessive messages
-            original_log_level = logger.level
-            logger.setLevel(logging.WARNING)
+                        future_to_obj[future] = obj
 
-            with ThreadPoolExecutor(max_workers=threads) as executor:
-                # Submit all tasks
-                future_to_obj = {
-                    executor.submit(client.create_address_object, obj, devicegroup): obj
-                    for obj in address_objects
-                }
+                        # Add done callback to update stats when the task completes
+                        future.add_done_callback(
+                            lambda f, obj_name=obj.name: progress.update(task, advance=1)
+                        )
 
-                for future in as_completed(future_to_obj):
-                    try:
-                        result = future.result()
-                        if result:
-                            successful += 1
-                        else:
+                    # Process results as they complete
+                    for future in as_completed(future_to_obj):
+                        try:
+                            result = future.result()
+                            if result:
+                                successful += 1
+                            else:
+                                failed += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to create address {future_to_obj[future].name}: {str(e)}"
+                            )
                             failed += 1
-                    except Exception as e:
-                        logger.error(f"Error creating address: {str(e)}")
-                        failed += 1
 
-                    # Update progress
-                    progress.update(task, advance=1)
+                        # Update the live display
+                        live.update(get_thread_table())
+        else:
+            # Standard progress bar without thread monitoring
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("Creating address objects"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            ) as progress:
+                # Set up progress tracking
+                task = progress.add_task("Creating", total=len(address_objects))
 
-            # Restore original logging level
-            logger.setLevel(original_log_level)
+                with ThreadPoolExecutor(max_workers=threads) as executor:
+                    # Submit all tasks
+                    future_to_obj = {
+                        executor.submit(client.create_address_object, obj, devicegroup): obj
+                        for obj in address_objects
+                    }
+
+                    for future in as_completed(future_to_obj):
+                        try:
+                            result = future.result()
+                            if result:
+                                successful += 1
+                            else:
+                                failed += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to create address {future_to_obj[future].name}: {str(e)}"
+                            )
+                            failed += 1
+
+                        # Update progress
+                        progress.update(task, advance=1)
+
+        # Restore original logging level
+        logger.setLevel(original_log_level)
 
         # Display results
         total_time = time.time() - start_time
@@ -929,11 +1083,31 @@ def test_addresses(
         console.print(f"Total time: {total_time:.2f} seconds")
         console.print(f"Objects per second: {count / total_time:.2f}")
 
+        if enable_thread_monitoring:
+            # Display thread utilization summary
+            console.print("\nThread utilization summary:")
+            console.print(
+                f"Maximum concurrent threads: {thread_stats['max_concurrent']} of {threads} "
+                f"({(thread_stats['max_concurrent'] / threads) * 100:.1f}%)"
+            )
+
+            # Calculate the average thread utilization
+            if thread_stats["active_threads_history"]:
+                avg_utilization = sum(thread_stats["active_threads_history"]) / len(
+                    thread_stats["active_threads_history"]
+                )
+                console.print(
+                    f"Average thread utilization: {avg_utilization:.1f} "
+                    f"({(avg_utilization / threads) * 100:.1f}%)"
+                )
+
         # Commit changes if requested
         if commit and successful > 0:
             console.print("Committing changes...")
             commit_result = client.commit(admins="Test address objects bulk load")
             console.print(f"Commit job ID: {commit_result}")
+
+        console.print(f"[bold cyan]Debug: monitor_threads={monitor_threads}[/bold cyan]")
 
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
