@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -62,6 +62,21 @@ def load_yaml(file_path: str) -> Dict[str, Any]:
         raise yaml.YAMLError(f"Error parsing YAML file {path}: {str(e)}") from e
 
 
+def load_yaml_file(file_path: str) -> Dict[str, Any]:
+    """
+    Load a YAML file and return its contents.
+
+    This is an alias for load_yaml to maintain backward compatibility.
+
+    Args:
+        file_path: Path to the YAML file
+
+    Returns:
+        Dict containing parsed YAML content
+    """
+    return load_yaml(file_path)
+
+
 def save_yaml(file_path: str, data: Dict[str, Any]) -> None:
     """
     Save data to YAML file.
@@ -99,18 +114,51 @@ def validate_data(data: Dict[str, Any], model_class: Type[T]) -> List[T]:
     Raises:
         ValidationError: If validation fails
     """
-    validated_objects = []
+    result = []
+    errors = []
 
-    for idx, item in enumerate(data):
+    for i, item in enumerate(data):
         try:
-            validated_objects.append(model_class(**item))
+            validated = model_class(**item)
+            result.append(validated)
         except ValidationError as e:
-            # Add item index to error message
-            error_msg = f"Validation error in item {idx + 1}: {str(e)}"
-            console.print(f"[bold red]Error:[/] {error_msg}")
-            raise ValidationError(e.raw_errors, model_class) from e
+            errors.append(f"Item {i}: {str(e)}")
 
-    return validated_objects
+    if errors:
+        raise ValidationError(
+            f"Validation failed for {len(errors)} items:\n" + "\n".join(errors),
+            model=model_class,
+        )
+
+    return result
+
+
+def validate_objects_from_yaml(
+    yaml_data: Dict[str, Any], object_key: str, model_class: Type[BaseModel]
+) -> List[BaseModel]:
+    """
+    Validate objects from YAML data against a specified model.
+
+    Args:
+        yaml_data: Parsed YAML data
+        object_key: Key in the YAML data containing the objects list
+        model_class: Pydantic model class to validate against
+
+    Returns:
+        List of validated model instances
+
+    Raises:
+        ValueError: If the object_key is not found in yaml_data
+        ValidationError: If validation fails
+    """
+    if object_key not in yaml_data:
+        raise ValueError(f"Key '{object_key}' not found in YAML data")
+
+    objects_data = yaml_data[object_key]
+    if not isinstance(objects_data, list):
+        raise ValueError(f"Expected a list for '{object_key}', got {type(objects_data).__name__}")
+
+    return validate_data(objects_data, model_class)
 
 
 def create_progress_tracker(total: int, description: str = "Processing") -> Progress:
@@ -127,8 +175,8 @@ def create_progress_tracker(total: int, description: str = "Processing") -> Prog
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[bold blue]{task.description}"),
-        TextColumn("[bold yellow]{task.completed}/{task.total}"),
-        transient=False,
+        TextColumn("[bold green]{task.completed}/{task.total}"),
+        console=console,
     )
     progress.add_task(description, total=total)
     return progress
@@ -145,17 +193,25 @@ def process_futures(futures: List[Any], progress: Progress = None) -> List[Any]:
     Returns:
         List of results from futures
     """
-    results = []
+    import concurrent.futures
 
-    for future in futures:
+    results = []
+    errors = []
+
+    for future in concurrent.futures.as_completed(futures):
         try:
             result = future.result()
             results.append(result)
             if progress:
-                progress.advance(progress.tasks[0].id)
+                progress.update(progress.tasks[0].id, advance=1)
         except Exception as e:
-            console.print(f"[bold red]Error:[/] {str(e)}")
+            errors.append(str(e))
             if progress:
-                progress.advance(progress.tasks[0].id)
+                progress.update(progress.tasks[0].id, advance=1)
+
+    if errors:
+        console.print("[bold red]Errors occurred during processing[/bold red]")
+        for i, error in enumerate(errors, start=1):
+            console.print(f"  {i}. {error}")
 
     return results

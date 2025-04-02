@@ -79,28 +79,82 @@ def load_config(config_path: Optional[str] = None) -> PanosConfig:
 
 def generate_api_key(config: PanosConfig) -> str:
     """
-    Generate API key using username and password.
+    Generate an API key using pan-os-python.
 
     Args:
-        config: PanosConfig instance with username and password
+        config: PAN-OS configuration with username, password, and hostname
 
     Returns:
-        str: Generated API key
+        Generated API key as string
+
+    Raises:
+        ImportError: If pan-os-python is not installed
+        ValueError: If API key generation fails
     """
+    # If in mock mode, return dummy key
     if config.mock_mode:
         return "mock-api-key"
 
     try:
-        from panos.panorama import Panorama
+        import xml.etree.ElementTree as Et
 
-        device = Panorama(
-            hostname=config.hostname,
-            api_username=config.username,
-            api_password=config.password,
-        )
-        api_key = device.generate_api_key()
-        return api_key
+        import requests
+
+        # Use direct XML API request since Panorama class does not have generate_api_key method
+        url = f"https://{config.hostname}/api/"
+        params = {"type": "keygen", "user": config.username, "password": config.password}
+
+        # Disable SSL warnings in case of self-signed certificates
+        try:
+            import urllib3
+
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        except ImportError:
+            pass
+
+        # Make the API request
+        response = requests.get(url, params=params, verify=False, timeout=10)
+        response.raise_for_status()
+
+        # Parse the XML response
+        root = Et.fromstring(response.text)
+        api_key = root.find(".//key")
+
+        if api_key is not None:
+            return api_key.text
+
+        raise ValueError("API key not found in response")
     except ImportError as err:
-        raise ImportError("pan-os-python is required to generate API key") from err
+        raise ImportError("Required libraries (requests) are needed to generate API key") from err
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to connect to {config.hostname}: {str(e)}") from e
     except Exception as e:
         raise ValueError(f"Failed to generate API key: {str(e)}") from e
+
+
+def get_or_create_config(
+    config_path: Optional[str] = None, mock_mode: bool = False, thread_pool_size: int = 10
+) -> PanosConfig:
+    """
+    Get or create a configuration object with optional overrides.
+
+    Args:
+        config_path: Path to the configuration file (default: ~/.pan-os-cli/config.yaml)
+        mock_mode: Override mock_mode setting
+        thread_pool_size: Override thread_pool_size setting
+
+    Returns:
+        PanosConfig: Configuration object
+    """
+    # Load base configuration
+    config = load_config(config_path)
+
+    # Apply overrides
+    config.mock_mode = mock_mode
+    config.thread_pool_size = thread_pool_size
+
+    # Ensure we have an API key if not in mock mode
+    if not config.mock_mode and not config.api_key and config.username and config.password:
+        config.api_key = generate_api_key(config)
+
+    return config

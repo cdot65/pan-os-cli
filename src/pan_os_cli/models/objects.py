@@ -3,7 +3,7 @@
 import ipaddress
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class Address(BaseModel):
@@ -23,10 +23,11 @@ class Address(BaseModel):
     class Config:
         """Pydantic model configuration."""
 
-        extra = "forbid"
+        extra = "allow"
 
-    @validator("ip_netmask", pre=True)
-    def validate_ip_netmask(self, v):
+    @field_validator("ip_netmask")
+    @classmethod
+    def validate_ip_netmask(cls, v):
         """Validate IP netmask format."""
         if v is None:
             return v
@@ -45,8 +46,9 @@ class Address(BaseModel):
                 f"Error: {str(e)}"
             ) from e
 
-    @validator("ip_range", pre=True)
-    def validate_ip_range(self, v):
+    @field_validator("ip_range")
+    @classmethod
+    def validate_ip_range(cls, v):
         """Validate IP range format."""
         if v is None:
             return v
@@ -60,8 +62,9 @@ class Address(BaseModel):
                 f"Invalid IP range: {v}. Must be in format: 192.168.1.1-192.168.1.10"
             ) from err
 
-    @validator("name", pre=True)
-    def validate_name(self, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
         """Validate address object name."""
         if not v or not isinstance(v, str):
             raise ValueError("Name must be a non-empty string")
@@ -71,7 +74,7 @@ class Address(BaseModel):
 
     def to_panos_object(self):
         """Convert to pan-os-python Address object."""
-        from panos.objects import Address as PanosAddress
+        from panos.objects import AddressObject as PanosAddress
 
         # Determine which address type to use based on provided fields
         if self.ip_netmask:
@@ -111,10 +114,11 @@ class AddressGroup(BaseModel):
     class Config:
         """Pydantic model configuration."""
 
-        extra = "forbid"
+        extra = "allow"
 
-    @validator("name", pre=True)
-    def validate_name(self, v):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
         """Validate address group name."""
         if not v or not isinstance(v, str):
             raise ValueError("Name must be a non-empty string")
@@ -122,22 +126,23 @@ class AddressGroup(BaseModel):
             raise ValueError("Name must be 63 characters or less")
         return v
 
-    @validator("static_members", "dynamic_filter")
-    def validate_group_type(self, v, values, **kwargs):
+    @field_validator("static_members", "dynamic_filter")
+    @classmethod
+    def validate_group_type(cls, v, info):
         """Ensure either static_members or dynamic_filter is provided, but not both."""
-        field = kwargs["field"].name
-        other_field = "dynamic_filter" if field == "static_members" else "static_members"
+        field_name = info.field_name
+        other_field = "dynamic_filter" if field_name == "static_members" else "static_members"
 
         # If this is the first field being validated, allow it
-        if other_field not in values:
+        if other_field not in info.data:
             return v
 
         # If both fields have values, raise an error
-        if v is not None and values.get(other_field) is not None:
+        if v is not None and info.data.get(other_field) is not None:
             raise ValueError("An address group cannot be both static and dynamic")
 
         # If neither field has a value, raise an error
-        if v is None and values.get(other_field) is None:
+        if v is None and info.data.get(other_field) is None:
             raise ValueError("Either static_members or dynamic_filter must be provided")
 
         return v
