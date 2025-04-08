@@ -18,22 +18,33 @@ T = TypeVar("T")
 console = Console()
 
 
-def configure_logging(verbose: bool = False) -> None:
+def configure_logging(log_level: int = logging.INFO) -> None:
     """
     Configure logging for the application.
 
     Args:
-        verbose: Enable debug logging if True
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    log_level = logging.DEBUG if verbose else logging.INFO
-
-    # Configure root logger
+    # Configure root logger with the provided log level
     logging.basicConfig(
         level=log_level,
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True, markup=True)],
     )
+
+    # Adjust third-party loggers to be less verbose by default
+    # Only show warnings and above for libraries unless we're in DEBUG mode
+    if log_level > logging.DEBUG:
+        # Set urllib3 to WARNING to avoid connection logs
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+        # Set pan-os-python library loggers to WARNING
+        logging.getLogger("panos").setLevel(logging.WARNING)
+        logging.getLogger("pan").setLevel(logging.WARNING)
+
+        # Set our own debug loggers to the specified level
+        logging.getLogger("pan_os_cli.config").setLevel(log_level)
 
 
 def load_yaml(file_path: str) -> Dict[str, Any]:
@@ -133,9 +144,7 @@ def validate_data(data: Dict[str, Any], model_class: Type[T]) -> List[T]:
     return result
 
 
-def validate_objects_from_yaml(
-    yaml_data: Dict[str, Any], object_key: str, model_class: Type[BaseModel]
-) -> List[BaseModel]:
+def validate_objects_from_yaml(yaml_data: Dict[str, Any], object_key: str, model_class: Type[BaseModel]) -> List[BaseModel]:
     """
     Validate objects from YAML data against a specified model.
 

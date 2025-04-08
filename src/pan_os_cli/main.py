@@ -31,9 +31,7 @@ test_app = typer.Typer(help="Test various PAN-OS operations")
 
 # Create object type apps for each action
 show_objects_app = typer.Typer(help="Show PAN-OS objects like addresses and address groups")
-set_objects_app = typer.Typer(
-    help="Create or update PAN-OS objects like addresses and address groups"
-)
+set_objects_app = typer.Typer(help="Create or update PAN-OS objects like addresses and address groups")
 delete_objects_app = typer.Typer(help="Delete PAN-OS objects like addresses and address groups")
 load_objects_app = typer.Typer(help="Bulk load PAN-OS objects like addresses and address groups")
 test_objects_app = typer.Typer(help="Test PAN-OS objects operations with load testing")
@@ -67,53 +65,37 @@ def test_auth_wrapper(
 @test_objects_app.command("addresses")
 def test_addresses_wrapper(
     count: int = typer.Option(100, help="Number of address objects to create"),
-    devicegroup: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group to add addresses to"
-    ),
+    devicegroup: str = typer.Option("Shared", "--device-group", "-dg", help="Device group to add addresses to"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
     commit: bool = typer.Option(False, help="Commit changes after loading"),
 ):
     """Test creating multiple address objects using multithreading."""
-    commands.objects.test_addresses(
-        count=count, devicegroup=devicegroup, mock=mock, threads=threads, commit=commit
-    )
+    commands.objects.test_addresses(count=count, devicegroup=devicegroup, mock=mock, threads=threads, commit=commit)
 
 
 # Show addresses command
 @show_objects_app.command("addresses")
 def show_addresses_wrapper(
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group containing the addresses"
-    ),
-    name: Optional[str] = typer.Option(
-        None, help="Name of the address object to show (omit for all)"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group containing the addresses"),
+    name: Optional[str] = typer.Option(None, help="Name of the address object to show (omit for all)"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
 ):
     """Show address objects with detailed information."""
-    commands.objects.show_addresses(
-        name=name, device_group=device_group, mock=mock, threads=threads
-    )
+    commands.objects.show_addresses(name=name, device_group=device_group, mock=mock, threads=threads)
 
 
 # Show address groups command
 @show_objects_app.command("address-groups")
 def show_address_groups_wrapper(
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group containing the address groups"
-    ),
-    name: Optional[str] = typer.Option(
-        None, help="Name of the address group to show (omit for all)"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group containing the address groups"),
+    name: Optional[str] = typer.Option(None, help="Name of the address group to show (omit for all)"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
 ):
     """Show address groups with detailed information."""
-    commands.objects.get_address_group(
-        name=name, devicegroup=device_group, mock=mock, threads=threads
-    )
+    commands.objects.get_address_group(name=name, devicegroup=device_group, mock=mock, threads=threads)
 
 
 # Set addresses command
@@ -124,9 +106,7 @@ def set_addresses_wrapper(
     value: str = typer.Option(..., help="Value of the address (depends on type)"),
     description: Optional[str] = typer.Option(None, help="Description of the address object"),
     tags: str = typer.Option(None, help="Comma-separated list of tags to apply"),
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group to add the address to"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group to add the address to"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
 ):
@@ -174,10 +154,7 @@ def set_addresses_wrapper(
             threads=threads,
         )
     else:
-        console.print(
-            f"[bold red]Error:[/] Invalid address type '{type}'. "
-            f"Must be one of: ip-netmask, fqdn, ip-range"
-        )
+        console.print(f"[bold red]Error:[/] Invalid address type '{type}'. Must be one of: ip-netmask, fqdn, ip-range")
         raise typer.Exit(1)
 
 
@@ -185,9 +162,7 @@ def set_addresses_wrapper(
 @delete_objects_app.command("addresses")
 def delete_addresses_wrapper(
     name: str = typer.Option(..., help="Name of the address object to delete"),
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group containing the address"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group containing the address"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
 ):
@@ -199,17 +174,13 @@ def delete_addresses_wrapper(
 @load_objects_app.command("addresses")
 def load_addresses_wrapper(
     file: str = typer.Option(..., help="Path to YAML file with address objects"),
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group to add addresses to"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group to add addresses to"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
     commit: bool = typer.Option(False, help="Commit changes after loading"),
 ):
     """Bulk load address objects from YAML file."""
-    commands.objects.load_address(
-        file=file, devicegroup=device_group, mock=mock, threads=threads, commit=commit
-    )
+    commands.objects.load_address(file=file, devicegroup=device_group, mock=mock, threads=threads, commit=commit)
 
 
 # Set address groups command
@@ -220,9 +191,7 @@ def set_address_groups_wrapper(
     dynamic_filter: str = typer.Option(None, help="Filter expression for dynamic group"),
     description: Optional[str] = typer.Option(None, help="Description of the address group"),
     tags: str = typer.Option(None, help="Comma-separated list of tags to apply"),
-    device_group: str = typer.Option(
-        "Shared", "--device-group", "-dg", help="Device group to add the address group to"
-    ),
+    device_group: str = typer.Option("Shared", "--device-group", "-dg", help="Device group to add the address group to"),
     mock: bool = typer.Option(False, help="Run in mock mode without making API calls"),
     threads: int = typer.Option(10, help="Number of threads to use for concurrent operations"),
 ):
@@ -261,7 +230,9 @@ def set_address_groups_wrapper(
 @app.callback()
 def main(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging (most detailed output)"),
     config_file: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config file"),
+    ngfw: bool = typer.Option(False, "--ngfw", help="Connect directly to a firewall instead of Panorama"),
 ):
     """
     PAN-OS CLI - Efficiently manage PAN-OS configurations with multi-threading support.
@@ -275,16 +246,33 @@ def main(
       --value 1.1.1.1/32 --tags "Automation,test"
     - pan-os-cli delete objects addresses --name test123
     - pan-os-cli load objects addresses --file example.yaml
+    - pan-os-cli --ngfw show objects addresses (connects directly to firewall)
     """
-    # Configure logging
-    configure_logging(verbose)
+    # Configure logging based on verbosity level
+    # --debug takes precedence, followed by --verbose
+    if debug:
+        log_level = logging.DEBUG
+    elif verbose:
+        log_level = logging.INFO
+    else:
+        log_level = logging.WARNING  # Only warnings and errors by default
 
-    # Load configuration (even if we don't use it here, this validates it's available)
+    configure_logging(log_level)
+
     try:
-        load_config(config_file)
-    except Exception as e:
+        # Load configuration from specified file or default
+        config = load_config(config_file)
+
+        # Set the is_ngfw flag in the config
+        config.is_ngfw = ngfw
+
+        if ngfw:
+            logger.info("Running in Next-Generation Firewall (NGFW) mode")
+        else:
+            logger.info("Running in Panorama mode")
+
+    except ValueError as e:
         console.print(f"[bold red]Error loading configuration:[/] {str(e)}")
-        logger.error(f"Error loading configuration: {str(e)}")
         sys.exit(1)
 
 

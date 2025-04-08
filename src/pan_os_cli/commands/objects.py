@@ -13,14 +13,7 @@ from panos.errors import PanDeviceError, PanXapiError
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from pan_os_cli.client import PanosClient
@@ -54,33 +47,56 @@ GROUP_TAGS_OPTION = typer.Option(EMPTY_LIST, help="Tags to apply to the address 
 app = typer.Typer()
 
 
-def create_client(mock=False, threads=10):
-    """Create a PAN-OS client."""
+def create_client(mock=False, threads=10, is_ngfw=False):
+    """
+    Create a PAN-OS client.
+
+    Args:
+        mock: Whether to run in mock mode without making API calls
+        threads: Number of threads to use for concurrent operations
+        is_ngfw: Whether to connect directly to a firewall instead of Panorama
+
+    Returns:
+        Configured PanosClient
+    """
     config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+    # Set NGFW mode in config
+    config.is_ngfw = is_ngfw
     return PanosClient(config)
+
+
+def handle_device_group_param(device_group: str, is_ngfw: bool) -> str:
+    """
+    Handle device group parameter based on device type.
+
+    When connecting to an NGFW firewall, log a message explaining that device groups
+    are ignored as they only apply to Panorama.
+
+    Args:
+        device_group: The device group parameter provided by user
+        is_ngfw: Whether we're in NGFW mode
+
+    Returns:
+        The device_group to use (only relevant for Panorama)
+    """
+    if is_ngfw and device_group.lower() != "shared":
+        logger.info(f"Note: Device group '{device_group}' is ignored in NGFW mode as device groups only apply to Panorama")
+        return "Shared"  # Return a default value that won't cause issues
+    return device_group
 
 
 @app.command("set-address")
 def set_address(
     name: str = typer.Option(..., help="Name of the address object"),
-    ip_netmask: Optional[str] = typer.Option(
-        NONE_DEFAULT, "--ip-netmask", help="IP address or network in CIDR notation"
-    ),
+    ip_netmask: Optional[str] = typer.Option(NONE_DEFAULT, "--ip-netmask", help="IP address or network in CIDR notation"),
     fqdn: Optional[str] = typer.Option(NONE_DEFAULT, "--fqdn", help="Fully qualified domain name"),
-    ip_range: Optional[str] = typer.Option(
-        NONE_DEFAULT, "--ip-range", help="IP range (e.g., 192.168.1.1-192.168.1.10)"
-    ),
-    description: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Description of the address object"
-    ),
+    ip_range: Optional[str] = typer.Option(NONE_DEFAULT, "--ip-range", help="IP range (e.g., 192.168.1.1-192.168.1.10)"),
+    description: Optional[str] = typer.Option(NONE_DEFAULT, help="Description of the address object"),
     tags: List[str] = TAGS_OPTION,
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add the address to"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add the address to"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Create or update an address object."""
     try:
@@ -97,8 +113,8 @@ def set_address(
         )
 
         # Connect to PAN-OS and create the object
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
         result = client.create_address_object(address, devicegroup)
 
         if result:
@@ -113,21 +129,14 @@ def set_address(
 @app.command("set-address-group")
 def set_address_group(
     name: str = typer.Option(..., help="Name of the address group"),
-    description: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Description of the address group"
-    ),
+    description: Optional[str] = typer.Option(NONE_DEFAULT, help="Description of the address group"),
     static_members: List[str] = STATIC_MEMBERS_OPTION,
-    dynamic_filter: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Filter expression (for dynamic groups)"
-    ),
+    dynamic_filter: Optional[str] = typer.Option(NONE_DEFAULT, help="Filter expression (for dynamic groups)"),
     tags: List[str] = GROUP_TAGS_OPTION,
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add the address group to"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add the address group to"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Create or update an address group."""
     try:
@@ -143,8 +152,8 @@ def set_address_group(
         )
 
         # Connect to PAN-OS and create the object
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
         result = client.create_address_group(address_group, devicegroup)
 
         if result:
@@ -159,21 +168,18 @@ def set_address_group(
 @app.command("delete-address")
 def delete_address(
     name: str = typer.Option(..., help="Name of the address object to delete"),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group containing the address"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group containing the address"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Delete an address object."""
     try:
         console.print(f"Deleting address: [bold blue]{name}[/]")
 
         # Connect to PAN-OS and delete the object
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
         result = client.delete_address_object(name, devicegroup)
 
         if result:
@@ -188,21 +194,18 @@ def delete_address(
 @app.command("delete-address-group")
 def delete_address_group(
     name: str = typer.Option(..., help="Name of the address group to delete"),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group containing the address group"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group containing the address group"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Delete an address group."""
     try:
         console.print(f"Deleting address group: [bold blue]{name}[/]")
 
         # Connect to PAN-OS and delete the object
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
         result = client.delete_address_group(name, devicegroup)
 
         if result:
@@ -217,14 +220,11 @@ def delete_address_group(
 @app.command("load-address")
 def load_address(
     file: str = typer.Option(..., help="Path to YAML file with address objects"),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add addresses to"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add addresses to"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
     commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Bulk load address objects from YAML file using multi-threading."""
     try:
@@ -243,22 +243,16 @@ def load_address(
             return
 
         # Connect to PAN-OS
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
 
         # Create the objects with multithreading
         with create_progress_tracker(len(panos_objects), "Loading address objects") as progress:
-            console.print(
-                f"Loading [bold blue]{len(panos_objects)}[/] address objects with "
-                f"[bold green]{threads}[/] threads..."
-            )
+            console.print(f"Loading [bold blue]{len(panos_objects)}[/] address objects with [bold green]{threads}[/] threads...")
 
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Submit all tasks
-                future_to_obj = {
-                    executor.submit(client.create_address_object, obj, devicegroup): obj
-                    for obj in panos_objects
-                }
+                future_to_obj = {executor.submit(client.create_address_object, obj, devicegroup): obj for obj in panos_objects}
 
                 # Process results as they complete
                 results = []
@@ -272,10 +266,7 @@ def load_address(
                     progress.advance(0)
 
                 successful = len([r for r in results if r is not None])
-                console.print(
-                    f"[bold green]Success:[/] {successful}/{len(panos_objects)} "
-                    f"address objects loaded"
-                )
+                console.print(f"[bold green]Success:[/] {successful}/{len(panos_objects)} address objects loaded")
 
         # Commit changes if requested
         if commit and successful > 0:
@@ -292,14 +283,11 @@ def load_address(
 @app.command("load-address-group")
 def load_address_group(
     file: str = typer.Option(..., help="Path to YAML file with address groups"),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add address groups to"
-    ),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to add address groups to"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
     commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Bulk load address groups from YAML file using multi-threading."""
     try:
@@ -318,22 +306,16 @@ def load_address_group(
             return
 
         # Connect to PAN-OS
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
 
         # Create the objects with multithreading
         with create_progress_tracker(len(panos_objects), "Loading address groups") as progress:
-            console.print(
-                f"Loading [bold blue]{len(panos_objects)}[/] address groups with "
-                f"[bold green]{threads}[/] threads..."
-            )
+            console.print(f"Loading [bold blue]{len(panos_objects)}[/] address groups with [bold green]{threads}[/] threads...")
 
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 # Submit all tasks
-                future_to_obj = {
-                    executor.submit(client.create_address_group, obj, devicegroup): obj
-                    for obj in panos_objects
-                }
+                future_to_obj = {executor.submit(client.create_address_group, obj, devicegroup): obj for obj in panos_objects}
 
                 # Process results as they complete
                 results = []
@@ -347,10 +329,7 @@ def load_address_group(
                     progress.advance(0)
 
                 successful = len([r for r in results if r is not None])
-                console.print(
-                    f"[bold green]Success:[/] {successful}/{len(panos_objects)} "
-                    f"address groups loaded"
-                )
+                console.print(f"[bold green]Success:[/] {successful}/{len(panos_objects)} address groups loaded")
 
         # Commit changes if requested
         if commit and successful > 0:
@@ -366,21 +345,16 @@ def load_address_group(
 
 @app.command("get-address")
 def get_address(
-    name: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Name of the address object to get (omit for all)"
-    ),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to get addresses from"
-    ),
+    name: Optional[str] = typer.Option(NONE_DEFAULT, help="Name of the address object to get (omit for all)"),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to get addresses from"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Get address objects."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
 
         # Get addresses from PAN-OS
         try:
@@ -396,7 +370,7 @@ def get_address(
 
 
 def _get_address_impl(client, name, devicegroup):
-    """Implementation for getting address object(s)."""
+    """Get address object(s) implementation function."""
     # Get addresses based on whether a specific name was provided
     addresses = _fetch_addresses(client, name, devicegroup)
 
@@ -433,9 +407,7 @@ def _fetch_addresses(client, name, devicegroup):
         # Get all addresses
         addresses = client.list_addresses(devicegroup)
         if not addresses:
-            console.print(
-                f"[bold yellow]Warning:[/] No addresses found in device group '{devicegroup}'."
-            )
+            console.print(f"[bold yellow]Warning:[/] No addresses found in device group '{devicegroup}'.")
             raise typer.Exit(0)
         return addresses
 
@@ -512,21 +484,16 @@ def _process_address_dict(addr, result):
 
 @app.command("get-address-group")
 def get_address_group(
-    name: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Name of the address group to get (omit for all)"
-    ),
-    devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to get address groups from"
-    ),
+    name: Optional[str] = typer.Option(NONE_DEFAULT, help="Name of the address group to get (omit for all)"),
+    devicegroup: str = typer.Option(SHARED_DEFAULT, "--devicegroup", "-dg", help="Device group to get address groups from"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Get address groups."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
 
         # If name is provided, get specific address group, otherwise get all
         groups = []
@@ -539,9 +506,7 @@ def get_address_group(
 
         if not groups:
             if name:
-                console.print(
-                    f"[yellow]No address group found:[/] '{name}' in device group '{devicegroup}'"
-                )
+                console.print(f"[yellow]No address group found:[/] '{name}' in device group '{devicegroup}'")
             else:
                 console.print(f"[yellow]No address groups found[/] in device group '{devicegroup}'")
             return
@@ -592,18 +557,14 @@ def get_address_group(
 def commit_changes(
     description: Optional[str] = typer.Option(NONE_DEFAULT, help="Description for the commit"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
     wait: bool = typer.Option(WAIT_DEFAULT, help="Wait for commit to complete"),
-    timeout: int = typer.Option(
-        TIMEOUT_DEFAULT, help="Maximum time to wait for commit completion (seconds)"
-    ),
+    timeout: int = typer.Option(TIMEOUT_DEFAULT, help="Maximum time to wait for commit completion (seconds)"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Commit configuration changes to PAN-OS."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
 
         # Commit changes
         console.print("Committing changes to PAN-OS device...")
@@ -624,9 +585,7 @@ def commit_changes(
                     console.print("[bold green]Commit completed successfully[/]")
                     break
                 elif status.get("status") in ["failed", "error"]:
-                    console.print(
-                        f"[bold red]Commit failed:[/] {status.get('result', 'Unknown error')}"
-                    )
+                    console.print(f"[bold red]Commit failed:[/] {status.get('result', 'Unknown error')}")
                     raise typer.Exit(1)
 
                 time.sleep(5)
@@ -645,14 +604,12 @@ def commit_changes(
 def check_commit(
     job_id: str = typer.Option(..., help="Commit job ID to check"),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Check the status of a commit job."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
 
         # Check commit status
         console.print(f"Checking status of commit job [bold blue]{job_id}[/]...")
@@ -672,50 +629,125 @@ def check_commit(
         raise typer.Exit(1) from e
 
 
+def _check_configuration_env(mock: bool, threads: int, is_ngfw: bool):
+    """Check and display environment configuration information."""
+    import os
+
+    from pan_os_cli.config import get_or_create_config
+
+    console.print("[bold blue]Checking configuration...[/]")
+    console.print(f"Current directory: {os.getcwd()}")
+    console.print("Environment variables present:")
+    console.print(f"  PANOS_HOSTNAME: {'Yes' if 'PANOS_HOSTNAME' in os.environ else 'No'}")
+    console.print(f"  PANOS_API_KEY: {'Yes (value hidden)' if 'PANOS_API_KEY' in os.environ else 'No'}")
+    console.print(f"  PANOS_USERNAME: {'Yes' if 'PANOS_USERNAME' in os.environ else 'No'}")
+    console.print(f"  PANOS_PASSWORD: {'Yes (value hidden)' if 'PANOS_PASSWORD' in os.environ else 'No'}")
+
+    # Check for .env file
+    if os.path.exists(".env"):
+        console.print("[green]Found .env file in current directory[/]")
+    else:
+        console.print("[yellow]No .env file found in current directory[/]")
+
+    # Show config we're using
+    try:
+        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+        config.is_ngfw = is_ngfw
+        console.print("\n[bold green]Configuration being used:[/]")
+        console.print(f"  Hostname: {config.hostname if config.hostname else '[red]Empty[/]'}")
+        api_key_set = bool(config.api_key)
+        console.print(f"  API Key: {'[green]Set[/]' if api_key_set else '[red]Empty[/]'}")
+        console.print(f"  Thread Pool Size: {config.thread_pool_size}")
+        console.print(f"  Mock Mode: {config.mock_mode}")
+        console.print(f"  NGFW Mode: {config.is_ngfw}")
+
+        return config
+    except Exception as e:
+        console.print(f"[bold red]Error loading configuration:[/] {str(e)}")
+        return None
+
+
+def _get_device_info(client):
+    """Extract device information from the PAN-OS client."""
+    # Get attributes safely - these may differ between device types
+    serial = getattr(client.device, "serial", "Unknown")
+    version = getattr(client.device, "_version_info", getattr(client.device, "version", "Unknown"))
+
+    # For model, we need to handle different ways to get it
+    model = "Unknown"
+    if hasattr(client.device, "model"):
+        model = client.device.model
+    elif hasattr(client.device, "_model"):
+        model = client.device._model
+    else:
+        # Try to get model from system info if available
+        try:
+            system_info = getattr(client.device, "system_info", None)
+            if system_info and hasattr(system_info, "model"):
+                model = system_info.model
+        except Exception as e:
+            logger.error(f"Failed to get model: {str(e)}")
+
+    return serial, version, model
+
+
 @app.command("test-auth")
 def test_auth(
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Test PAN-OS authentication and connectivity."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        # Check configuration and environment
+        config = _check_configuration_env(mock, threads, is_ngfw)
+        if not config:
+            return
+
+        device_type = "Next-Generation Firewall" if is_ngfw else "Panorama"
+        console.print(f"\nTesting connection to {device_type}...")
+
+        # Create client and test connection
+        client = create_client(mock, threads, is_ngfw)
 
         # Handle differently for mock mode
         if mock:
-            console.print("[bold green]Running in mock mode - no actual connection will be made[/]")
-            console.print("Configuration appears to be valid")
-            console.print("[bold blue]Mock connection successful![/]")
+            console.print()
+            console.print("[yellow]Running in mock mode, no actual API calls will be made[/]")
+            console.print(f"[green]Mock connection to {config.hostname or 'PAN-OS device'} would be tested here")
             return
 
-        # Test connectivity using system info refresh
-        console.print(f"Testing connection to [bold blue]{client.config.hostname}[/]...")
-        client.device.refresh_system_info()
+        # Test for real
+        try:
+            start_time = time.time()
+            console.print(f"Connecting to {config.hostname}...")
+            # Force refresh system info
+            client.device.refresh_system_info()
 
-        # Display connection information
-        console.print("[bold green]Connection successful![/]")
-        console.print(f"Connected to: [bold blue]{client.config.hostname}[/]")
+            # Get device information
+            serial, version, model = _get_device_info(client)
+            device_type = "Firewall" if is_ngfw else "Panorama"
 
-        # Get device info based on device type
-        from panos.panorama import Panorama
-
-        if isinstance(client.device, Panorama):
-            console.print("Device Type: [bold]Panorama[/]")
-            console.print(f"Hostname: [bold]{client.device.hostname}[/]")
-            console.print(f"Serial: [bold]{client.device.serial}[/]")
-            console.print(f"SW Version: [bold]{client.device.version}[/]")
-        else:
-            console.print("Device Type: [bold]Firewall[/]")
-            console.print(f"Model: [bold]{client.device.model}[/]")
-            console.print(f"Serial: [bold]{client.device.serial}[/]")
-            console.print(f"SW Version: [bold]{client.device.version}[/]")
-
+            end_time = time.time()
+            console.print()
+            console.print("[bold green]✓ Connection successful![/]")
+            console.print(f"  Device type: {device_type}")
+            console.print(f"  Model: {model}")
+            console.print(f"  PAN-OS Version: {version}")
+            console.print(f"  Serial: {serial}")
+            console.print(f"  Response time: {end_time - start_time:.2f} seconds")
+        except Exception as e:
+            console.print()
+            console.print("[bold red]✗ Connection failed![/]")
+            console.print(f"  Error: {str(e)}")
+            console.print()
+            console.print("[bold yellow]Troubleshooting tips:[/]")
+            console.print("  1. Verify hostname/IP is correct")
+            console.print("  2. Check if API key or username/password is valid")
+            console.print("  3. Ensure the device is reachable on the network")
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
-        logger.exception("Error testing authentication")
+        logger.exception("Error in test-auth command")
         raise typer.Exit(1) from e
 
 
@@ -723,16 +755,16 @@ def test_auth(
 def test_addresses(  # noqa: C901
     count: int = typer.Option(100, help="Number of address objects to create"),
     devicegroup: str = typer.Option(
-        SHARED_DEFAULT, "--device-group", "-dg", help="Device group to add addresses to"
+        SHARED_DEFAULT,
+        "--device-group",
+        "-dg",
+        help="Device group to add addresses to",
     ),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
     commit: bool = typer.Option(COMMIT_DEFAULT, help="Commit changes after loading"),
-    monitor_threads: bool = typer.Option(
-        False, "--monitor-threads", help="Monitor and display thread activity"
-    ),
+    monitor_threads: bool = typer.Option(False, "--monitor-threads", help="Monitor and display thread activity"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """
     Test creating multiple address objects using multithreading.
@@ -761,8 +793,8 @@ def test_addresses(  # noqa: C901
         enable_thread_monitoring = monitor_threads or threads > 5
 
         # Create client
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        devicegroup = handle_device_group_param(devicegroup, is_ngfw)
 
         console.print(f"Generating {count} address objects with random words and timestamps...")
 
@@ -864,9 +896,7 @@ def test_addresses(  # noqa: C901
                 fourth_octet = i % 255
                 ip = f"10.0.{third_octet}.{fourth_octet}/32"
 
-                address = Address(
-                    name=f"{adj}-{noun}-{timestamp}", ip_netmask=ip, description=None, tags=[]
-                )
+                address = Address(name=f"{adj}-{noun}-{timestamp}", ip_netmask=ip, description=None, tags=[])
             elif addr_type == "fqdn":
                 # Generate unique domain name
                 address = Address(
@@ -920,9 +950,7 @@ def test_addresses(  # noqa: C901
                     "start_time": time.time(),
                 }
                 # Update max concurrent threads right after adding
-                thread_stats["max_concurrent"] = max(
-                    thread_stats["max_concurrent"], len(active_threads)
-                )
+                thread_stats["max_concurrent"] = max(thread_stats["max_concurrent"], len(active_threads))
 
             # If in mock mode, add a small delay to ensure threads overlap
             if mock:
@@ -966,18 +994,13 @@ def test_addresses(  # noqa: C901
                         )
 
                 # Add thread stats to the table
-                max_usage_percentage = (
-                    (thread_stats["max_concurrent"] / threads) * 100 if threads > 0 else 0
-                )
-                current_usage_percentage = (
-                    (len(active_threads) / threads) * 100 if threads > 0 else 0
-                )
+                max_usage_percentage = (thread_stats["max_concurrent"] / threads) * 100 if threads > 0 else 0
+                current_usage_percentage = (len(active_threads) / threads) * 100 if threads > 0 else 0
 
                 table.add_row(
                     "SUMMARY",
                     "",
-                    f"Max Concurrent: {thread_stats['max_concurrent']} "
-                    f"({max_usage_percentage:.1f}%)",
+                    f"Max Concurrent: {thread_stats['max_concurrent']} ({max_usage_percentage:.1f}%)",
                 )
                 table.add_row(
                     "",
@@ -1014,9 +1037,7 @@ def test_addresses(  # noqa: C901
                         future_to_obj[future] = obj
 
                         # Add done callback to update stats when the task completes
-                        future.add_done_callback(
-                            lambda f, obj_name=obj.name: progress.update(task, advance=1)
-                        )
+                        future.add_done_callback(lambda f, obj_name=obj.name: progress.update(task, advance=1))
 
                     # Process results as they complete
                     for future in as_completed(future_to_obj):
@@ -1027,9 +1048,7 @@ def test_addresses(  # noqa: C901
                             else:
                                 failed += 1
                         except Exception as e:
-                            logger.error(
-                                f"Failed to create address {future_to_obj[future].name}: {str(e)}"
-                            )
+                            logger.error(f"Failed to create address {future_to_obj[future].name}: {str(e)}")
                             failed += 1
 
                         # Update the live display
@@ -1050,10 +1069,7 @@ def test_addresses(  # noqa: C901
 
                 with ThreadPoolExecutor(max_workers=threads) as executor:
                     # Submit all tasks
-                    future_to_obj = {
-                        executor.submit(client.create_address_object, obj, devicegroup): obj
-                        for obj in address_objects
-                    }
+                    future_to_obj = {executor.submit(client.create_address_object, obj, devicegroup): obj for obj in address_objects}
 
                     for future in as_completed(future_to_obj):
                         try:
@@ -1063,9 +1079,7 @@ def test_addresses(  # noqa: C901
                             else:
                                 failed += 1
                         except Exception as e:
-                            logger.error(
-                                f"Failed to create address {future_to_obj[future].name}: {str(e)}"
-                            )
+                            logger.error(f"Failed to create address {future_to_obj[future].name}: {str(e)}")
                             failed += 1
 
                         # Update progress
@@ -1087,19 +1101,13 @@ def test_addresses(  # noqa: C901
             # Display thread utilization summary
             console.print("\nThread utilization summary:")
             console.print(
-                f"Maximum concurrent threads: {thread_stats['max_concurrent']} of {threads} "
-                f"({(thread_stats['max_concurrent'] / threads) * 100:.1f}%)"
+                f"Maximum concurrent threads: {thread_stats['max_concurrent']} of {threads} ({(thread_stats['max_concurrent'] / threads) * 100:.1f}%)"
             )
 
             # Calculate the average thread utilization
             if thread_stats["active_threads_history"]:
-                avg_utilization = sum(thread_stats["active_threads_history"]) / len(
-                    thread_stats["active_threads_history"]
-                )
-                console.print(
-                    f"Average thread utilization: {avg_utilization:.1f} "
-                    f"({(avg_utilization / threads) * 100:.1f}%)"
-                )
+                avg_utilization = sum(thread_stats["active_threads_history"]) / len(thread_stats["active_threads_history"])
+                console.print(f"Average thread utilization: {avg_utilization:.1f} ({(avg_utilization / threads) * 100:.1f}%)")
 
         # Commit changes if requested
         if commit and successful > 0:
@@ -1117,9 +1125,7 @@ def test_addresses(  # noqa: C901
 
 @app.command("show")
 def show_addresses(
-    name: Optional[str] = typer.Option(
-        NONE_DEFAULT, help="Name of the address object to show (omit for all)"
-    ),
+    name: Optional[str] = typer.Option(NONE_DEFAULT, help="Name of the address object to show (omit for all)"),
     device_group: str = typer.Option(
         SHARED_DEFAULT,
         "--device-group",
@@ -1127,14 +1133,13 @@ def show_addresses(
         help="Device group containing the addresses",
     ),
     mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
-    threads: int = typer.Option(
-        THREADS_DEFAULT, help="Number of threads to use for concurrent operations"
-    ),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
 ):
     """Show address objects with detailed information."""
     try:
-        config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
-        client = PanosClient(config)
+        client = create_client(mock, threads, is_ngfw)
+        device_group = handle_device_group_param(device_group, is_ngfw)
         _show_addresses_impl(client, name, device_group)
     except Exception as e:
         console.print(f"[bold red]Error:[/] {str(e)}")
@@ -1143,7 +1148,7 @@ def show_addresses(
 
 
 def _show_addresses_impl(client, name, device_group):
-    """Implementation for showing address objects with detailed information."""
+    """Show address objects with detailed information."""
     # Get all addresses or specific address
     try:
         if name:
@@ -1154,9 +1159,7 @@ def _show_addresses_impl(client, name, device_group):
         else:
             addresses = client.list_addresses(device_group)
             if not addresses:
-                console.print(
-                    f"[bold yellow]Warning:[/] No addresses found in device group '{device_group}'."
-                )
+                console.print(f"[bold yellow]Warning:[/] No addresses found in device group '{device_group}'.")
                 raise typer.Exit(0)
     except (PanDeviceError, PanXapiError) as e:
         console.print(f"[bold red]Error:[/] Failed to retrieve addresses: {str(e)}")
@@ -1194,3 +1197,64 @@ def _show_addresses_impl(client, name, device_group):
             table.add_row(name, addr_type, value, description, tags)
 
     console.print(table)
+
+
+@app.command("debug-config")
+def debug_config(
+    mock: bool = typer.Option(MOCK_DEFAULT, help="Run in mock mode without making API calls"),
+    threads: int = typer.Option(THREADS_DEFAULT, help="Number of threads to use for concurrent operations"),
+    is_ngfw: bool = typer.Option(False, help="Whether to connect directly to a firewall instead of Panorama"),
+):
+    """Debug configuration loading and display current settings (no sensitive data)."""
+    try:
+        # Load config directly to see what's happening
+        import os
+
+        from pan_os_cli.config import get_or_create_config, load_config
+
+        console.print("[bold blue]Loading configuration...[/]")
+
+        # Show where we're looking for config
+        console.print(f"Current directory: {os.getcwd()}")
+        console.print("Environment variables present:")
+        console.print(f"  PANOS_HOSTNAME: {'Yes' if 'PANOS_HOSTNAME' in os.environ else 'No'}")
+        console.print(f"  PANOS_API_KEY: {'Yes (value hidden)' if 'PANOS_API_KEY' in os.environ else 'No'}")
+        console.print(f"  PANOS_USERNAME: {'Yes' if 'PANOS_USERNAME' in os.environ else 'No'}")
+        console.print(f"  PANOS_PASSWORD: {'Yes (value hidden)' if 'PANOS_PASSWORD' in os.environ else 'No'}")
+
+        # Check for .env file
+        if os.path.exists(".env"):
+            console.print("[green]Found .env file in current directory[/]")
+        else:
+            console.print("[yellow]No .env file found in current directory[/]")
+
+        # Try direct loading
+        try:
+            direct_config = load_config()
+            console.print("\n[bold green]Configuration loaded directly:[/]")
+            console.print(f"  Hostname: {direct_config.hostname if direct_config.hostname else '[red]Empty[/]'}")
+            api_key_set = bool(direct_config.api_key)
+            console.print(f"  API Key: {'[green]Set[/]' if api_key_set else '[red]Empty[/]'}")
+            console.print(f"  Thread Pool Size: {direct_config.thread_pool_size}")
+            console.print(f"  Mock Mode: {direct_config.mock_mode}")
+            console.print(f"  NGFW Mode: {direct_config.is_ngfw}")
+        except Exception as e:
+            console.print(f"[bold red]Error loading config directly:[/] {str(e)}")
+
+        # Try via get_or_create
+        try:
+            created_config = get_or_create_config(mock_mode=mock, thread_pool_size=threads)
+            created_config.is_ngfw = is_ngfw
+            console.print("\n[bold green]Configuration from get_or_create_config:[/]")
+            console.print(f"  Hostname: {created_config.hostname if created_config.hostname else '[red]Empty[/]'}")
+            api_key_set = bool(created_config.api_key)
+            console.print(f"  API Key: {'[green]Set[/]' if api_key_set else '[red]Empty[/]'}")
+            console.print(f"  Thread Pool Size: {created_config.thread_pool_size}")
+            console.print(f"  Mock Mode: {created_config.mock_mode}")
+            console.print(f"  NGFW Mode: {created_config.is_ngfw}")
+        except Exception as e:
+            console.print(f"[bold red]Error with get_or_create_config:[/] {str(e)}")
+
+        console.print("\n[bold blue]Configuration debugging complete[/]")
+    except Exception as e:
+        console.print(f"[bold red]Debug error:[/] {str(e)}")

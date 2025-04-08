@@ -4,9 +4,10 @@ import concurrent.futures
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from panos.errors import PanDeviceError, PanXapiError
+from panos.firewall import Firewall
 from panos.objects import AddressGroup, AddressObject
 from panos.panorama import DeviceGroup, Panorama
 from rich.console import Console
@@ -53,10 +54,13 @@ class PanosClient:
             ValueError: If connection fails
         """
         try:
+            # Determine device class based on is_ngfw flag
+            device_class = Firewall if self.config.is_ngfw else Panorama
+
             if self.config.api_key:
-                self.device = Panorama(hostname=self.config.hostname, api_key=self.config.api_key)
+                self.device = device_class(hostname=self.config.hostname, api_key=self.config.api_key)
             else:
-                self.device = Panorama(
+                self.device = device_class(
                     hostname=self.config.hostname,
                     api_username=self.config.username,
                     api_password=self.config.password,
@@ -64,23 +68,32 @@ class PanosClient:
 
             # Test connection
             self.device.refresh_system_info()
-            logger.info(f"Connected to {self.config.hostname} successfully")
+            device_type = "Firewall" if self.config.is_ngfw else "Panorama"
+            logger.info(f"Connected to {self.config.hostname} ({device_type}) successfully")
 
         except (PanDeviceError, PanXapiError) as e:
             error_msg = f"Failed to connect to {self.config.hostname}: {str(e)}"
             logger.error(error_msg)
             raise ValueError(error_msg) from e
 
-    def _get_device_group_or_shared(self, device_group: str) -> DeviceGroup:
+    def _get_device_group_or_shared(self, device_group: str) -> Union[DeviceGroup, Firewall, Panorama]:
         """
-        Get device group object or shared.
+        Get device group object, shared, or firewall itself.
+
+        In NGFW mode, the firewall itself is returned regardless of device_group parameter.
+        In Panorama mode, either the device group object or Panorama itself (for 'shared') is returned.
 
         Args:
-            device_group: Name of the device group
+            device_group: Name of the device group (ignored in NGFW mode)
 
         Returns:
-            DeviceGroup object or shared
+            DeviceGroup object, Panorama object (for shared), or Firewall object (in NGFW mode)
         """
+        # For NGFW, always return the firewall device itself
+        if self.config.is_ngfw:
+            return self.device
+
+        # For Panorama, handle device groups or shared
         if device_group.lower() in ["shared"]:
             return self.device
 
@@ -88,9 +101,7 @@ class PanosClient:
         self.device.add(dg)
         return dg
 
-    def _execute_with_retry(
-        self, func: Callable[..., T], *args: Any, max_retries: int = 3, **kwargs: Any
-    ) -> T:
+    def _execute_with_retry(self, func: Callable[..., T], *args: Any, max_retries: int = 3, **kwargs: Any) -> T:
         """
         Execute function with retry logic and exponential backoff.
 
@@ -125,10 +136,7 @@ class PanosClient:
 
                 # Exponential backoff
                 wait_time = 2**retry_count
-                logger.warning(
-                    f"API call failed ({retry_count}/{max_retries}), retrying in {wait_time}s: "
-                    f"{str(e)}"
-                )
+                logger.warning(f"API call failed ({retry_count}/{max_retries}), retrying in {wait_time}s: {str(e)}")
                 time.sleep(wait_time)
 
         # If we get here, all retries failed
@@ -136,9 +144,7 @@ class PanosClient:
         logger.error(error_msg)
         raise last_exception
 
-    def add_objects(
-        self, objects_to_add: List[Any], device_group: str = "Shared"
-    ) -> List[concurrent.futures.Future]:
+    def add_objects(self, objects_to_add: List[Any], device_group: str = "Shared") -> List[concurrent.futures.Future]:
         """
         Add multiple objects to PAN-OS in parallel.
 
@@ -166,9 +172,7 @@ class PanosClient:
 
         return futures
 
-    def update_objects(
-        self, objects_to_update: List[Any], device_group: str = "Shared"
-    ) -> List[concurrent.futures.Future]:
+    def update_objects(self, objects_to_update: List[Any], device_group: str = "Shared") -> List[concurrent.futures.Future]:
         """
         Update multiple objects in PAN-OS in parallel.
 
@@ -191,16 +195,12 @@ class PanosClient:
             # Add object to the parent
             parent.add(obj)
             # Submit update operation to thread pool
-            future = self.executor.submit(
-                self._execute_with_retry, obj.apply, retry_on_exception=True
-            )
+            future = self.executor.submit(self._execute_with_retry, obj.apply, retry_on_exception=True)
             futures.append(future)
 
         return futures
 
-    def delete_objects(
-        self, objects_to_delete: List[Any], device_group: str = "Shared"
-    ) -> List[concurrent.futures.Future]:
+    def delete_objects(self, objects_to_delete: List[Any], device_group: str = "Shared") -> List[concurrent.futures.Future]:
         """
         Delete multiple objects from PAN-OS in parallel.
 
@@ -223,9 +223,7 @@ class PanosClient:
             # Add object to the parent
             parent.add(obj)
             # Submit delete operation to thread pool
-            future = self.executor.submit(
-                self._execute_with_retry, obj.delete, retry_on_exception=True
-            )
+            future = self.executor.submit(self._execute_with_retry, obj.delete, retry_on_exception=True)
             futures.append(future)
 
         return futures
@@ -263,6 +261,9 @@ class PanosClient:
         """
         Commit configuration changes to PAN-OS.
 
+        For Panorama devices, this uses commit_all which pushes to device groups.
+        For Firewall devices, this uses direct commit to the firewall itself.
+
         Args:
             admins: Optional admins for the commit
 
@@ -270,8 +271,9 @@ class PanosClient:
             Commit job ID or mock message
         """
         if self.config.mock_mode:
+            device_type = "Firewall" if self.config.is_ngfw else "Panorama"
             admins_msg = f" with admins: {admins}" if admins else ""
-            logger.debug(f"MOCK: Would commit changes{admins_msg}")
+            logger.debug(f"MOCK: Would commit changes to {device_type}{admins_msg}")
             return "mock-job-12345"
 
         try:
@@ -279,9 +281,18 @@ class PanosClient:
             if admins:
                 # Use admin parameter instead since description is not supported
                 commit_params["admins"] = admins
-            result = self._execute_with_retry(self.device.commit, sync=False, **commit_params)
+
+            # Use the appropriate commit method based on device type
+            if self.config.is_ngfw:
+                # For Firewall, use standard commit
+                result = self._execute_with_retry(self.device.commit, sync=False, **commit_params)
+            else:
+                # For Panorama, use commit_all to push to device groups
+                result = self._execute_with_retry(self.device.commit_all, sync=False, **commit_params)
+
             job_id = result.get("id")
-            logger.info(f"Commit initiated with job ID: {job_id}")
+            device_type = "Firewall" if self.config.is_ngfw else "Panorama"
+            logger.info(f"Commit initiated on {device_type} with job ID: {job_id}")
             return job_id
         except (PanDeviceError, PanXapiError) as e:
             logger.error(f"Commit failed: {str(e)}")
@@ -362,9 +373,7 @@ class PanosClient:
             logger.error(f"Failed to create address {address.name}: {str(e)}")
             raise
 
-    def create_address_group(
-        self, address_group: AddressGroup, device_group: str = "Shared"
-    ) -> bool:
+    def create_address_group(self, address_group: AddressGroup, device_group: str = "Shared") -> bool:
         """Create an address group."""
         # Handle mock mode
         if self.config.mock_mode:
@@ -618,9 +627,7 @@ class PanosClient:
                     static_value=["mock-server1", "mock-server2"],
                     description="Mock group 1",
                 ),
-                AddressGroup(
-                    name="mock-group2", static_value=["mock-server2"], description="Mock group 2"
-                ),
+                AddressGroup(name="mock-group2", static_value=["mock-server2"], description="Mock group 2"),
             ]
             # Add tags to mock groups
             for group in mock_groups:
@@ -709,9 +716,7 @@ class PanosClient:
         if self.config.mock_mode:
             logger.debug(f"MOCK: Would get address {name} from {device_group}")
             # Create a mock address
-            mock_address = AddressObject(
-                name=name, value="10.0.0.1/32", type="ip-netmask", description="Mock address object"
-            )
+            mock_address = AddressObject(name=name, value="10.0.0.1/32", type="ip-netmask", description="Mock address object")
             mock_address.tag = ["mock"]
             return mock_address
 
@@ -733,6 +738,7 @@ class PanosClient:
     def _ensure_tags_exist(self, tags: List[str], device_group: str = "Shared") -> None:
         """
         Ensure that all specified tags exist in PAN-OS before using them.
+
         Creates any missing tags.
 
         Args:

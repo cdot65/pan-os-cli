@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "CLI tool for managing PAN-OS configurations with multi-threading support"
 authors = ["Calvin Remsburg <cremsburg@protonmail.com>"]
 readme = "README.md"
-packages = [{include = "pan_os_cli", from = "src"}]
+packages = [{ include = "pan_os_cli", from = "src" }]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
-typer = {extras = ["all"], version = "^0.15.2"}
+typer = { extras = ["all"], version = "^0.15.2" }
 pyyaml = "^6.0.1"
 pan-os-python = "^1.12.1"
 dynaconf = "^3.2.10"
@@ -39,17 +39,8 @@ mkdocs-linkcheck = "^1.0.6"
 [tool.poetry.scripts]
 pan-os-cli = "pan_os_cli.main:app"
 
-[tool.pytest]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_functions = "test_*"
-markers = [
-    "unit: marks tests as unit tests",
-    "integration: marks tests as integration tests"
-]
-
 [tool.ruff]
-line-length = 100
+line-length = 160
 target-version = "py310"
 
 [tool.ruff.lint]

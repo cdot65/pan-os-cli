@@ -10,15 +10,11 @@ class Address(BaseModel):
     """Model for PAN-OS Address objects."""
 
     name: str = Field(..., description="Name of the address object")
-    ip_netmask: Optional[str] = Field(
-        None, description="IP address or network in CIDR notation (e.g., 192.168.1.1/32)"
-    )
+    ip_netmask: Optional[str] = Field(None, description="IP address or network in CIDR notation (e.g., 192.168.1.1/32)")
     fqdn: Optional[str] = Field(None, description="Fully qualified domain name")
     ip_range: Optional[str] = Field(None, description="IP range (e.g., 192.168.1.1-192.168.1.10)")
     description: Optional[str] = Field(None, description="Description of the address object")
-    tags: List[str] = Field(
-        default_factory=list, description="Tags associated with the address object"
-    )
+    tags: List[str] = Field(default_factory=list, description="Tags associated with the address object")
 
     class Config:
         """Pydantic model configuration."""
@@ -35,16 +31,9 @@ class Address(BaseModel):
             ipaddress.ip_network(v)
             return v
         except ValueError as err:
-            raise ValueError(
-                f"Invalid IP address or network: {v}. "
-                f"Please use CIDR notation (e.g., 192.168.1.0/24)."
-            ) from err
+            raise ValueError(f"Invalid IP address or network: {v}. Please use CIDR notation (e.g., 192.168.1.0/24).") from err
         except Exception as e:
-            raise ValueError(
-                f"Invalid IP address format: {v}. "
-                f"Please provide a valid IP address or network. "
-                f"Error: {str(e)}"
-            ) from e
+            raise ValueError(f"Invalid IP address format: {v}. Please provide a valid IP address or network. Error: {str(e)}") from e
 
     @field_validator("ip_range")
     @classmethod
@@ -58,9 +47,7 @@ class Address(BaseModel):
             ipaddress.ip_address(end_ip.strip())
             return v
         except (ValueError, AttributeError) as err:
-            raise ValueError(
-                f"Invalid IP range: {v}. Must be in format: 192.168.1.1-192.168.1.10"
-            ) from err
+            raise ValueError(f"Invalid IP range: {v}. Must be in format: 192.168.1.1-192.168.1.10") from err
 
     @field_validator("name")
     @classmethod
@@ -133,13 +120,9 @@ class AddressGroup(BaseModel):
 
     name: str = Field(..., description="Name of the address group")
     description: Optional[str] = Field(None, description="Description of the address group")
-    static_members: Optional[List[str]] = Field(
-        None, description="List of address object names for static group"
-    )
+    static_members: Optional[List[str]] = Field(None, description="List of address object names for static group")
     dynamic_filter: Optional[str] = Field(None, description="Filter expression for dynamic group")
-    tags: List[str] = Field(
-        default_factory=list, description="Tags associated with the address group"
-    )
+    tags: List[str] = Field(default_factory=list, description="Tags associated with the address group")
 
     class Config:
         """Pydantic model configuration."""
